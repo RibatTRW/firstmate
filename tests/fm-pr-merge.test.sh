@@ -150,7 +150,23 @@ case "${1:-} ${2:-}" in
   "pr view")
     case " $* " in
       *statusCheckRollup*)
-        cat "$FM_TEST_GH_VIEW_JSON"
+        requested=""
+        prev=""
+        for arg in "$@"; do
+          if [ "$prev" = "--json" ]; then
+            requested=$arg
+            break
+          fi
+          case "$arg" in
+            --json=*) requested=${arg#--json=} ; break ;;
+            --json) prev=--json ;;
+          esac
+        done
+        if [ -n "$requested" ]; then
+          jq --arg fields "$requested" '($fields | split(",")) as $wanted | with_entries(select(.key as $k | $wanted | index($k)))' "$FM_TEST_GH_VIEW_JSON"
+        else
+          cat "$FM_TEST_GH_VIEW_JSON"
+        fi
         if [ -f "${FM_TEST_AWAY_RECORD_AFTER_VIEW:-}" ]; then
           cp "$FM_TEST_AWAY_RECORD_AFTER_VIEW" "$FM_STATE_OVERRIDE/.afk-contract"
         fi

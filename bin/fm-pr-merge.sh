@@ -586,7 +586,7 @@ github_verify_mergeable() {
   local state='' draft='' mergeable='' merge_state='' live_head='' base=''
   local head_branch='' head_repo=''
 
-  if ! json=$(gh pr view "$URL" --json state,isDraft,mergeable,mergeStateStatus,headRefOid,baseRefName,statusCheckRollup 2>/dev/null) \
+  if ! json=$(gh pr view "$URL" --json state,isDraft,mergeable,mergeStateStatus,headRefOid,headRefName,headRepository,baseRefName,statusCheckRollup 2>/dev/null) \
     || [ -z "$json" ]; then
     echo "error: could not read the GitHub pull request state before merging" >&2
     return 1
