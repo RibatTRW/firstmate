@@ -1,0 +1,2 @@
+ok - the open-request read keeps an empty result, an unrelated branch, and a failed read apart
+ok - fm-pr-check reports every open pull request on the recorded head branch, and arms the poll either way

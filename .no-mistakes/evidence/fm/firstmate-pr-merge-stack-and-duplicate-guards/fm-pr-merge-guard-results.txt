@@ -1,0 +1,10 @@
+ok - fm-pr-merge distinguishes unreadable branch rules from a base with no merge queue
+ok - fm-pr-merge reads a plan-gated 403 on branch rules as no merge queue, not unreadable
+ok - fm-pr-merge says nothing about a merge queue when the base branch has no queue rule
+ok - fm-pr-merge refuses branch deletion unless --attended-override is passed
+ok - fm-pr-merge refuses GitLab source-branch deletion unless --attended-override is passed
+ok - the guards read each branch exactly while the method could rewrite it
+ok - fm-pr-merge refuses a pull request whose head branch another open pull request uses, naming every one
+ok - the duplicate-head guard ignores a same-named branch in another fork
+ok - fm-pr-merge refuses a rewrite that would strand open stacked pull requests, names them and the method to pass, and allows the merge commit
+ok - fm-pr-merge treats backtick and $() branch names as data in both guards
