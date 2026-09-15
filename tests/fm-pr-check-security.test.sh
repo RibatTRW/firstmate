@@ -154,12 +154,40 @@ case "${1:-} ${2:-}" in
     ;;
   "pr list")
     [ ! -f "${FM_TEST_GH_LIST_FAIL:-}" ] || exit 1
+    list_rows=""
     case " $* " in
-      *" --head "*) cat "${FM_TEST_GH_LIST_BY_HEAD:-/dev/null}" ;;
-      *" --base "*) cat "${FM_TEST_GH_LIST_BY_BASE:-/dev/null}" ;;
+      *" --head "*) list_rows=${FM_TEST_GH_LIST_BY_HEAD:-/dev/null} ;;
+      *" --base "*) list_rows=${FM_TEST_GH_LIST_BY_BASE:-/dev/null} ;;
       *) exit 2 ;;
     esac
-    exit 0
+    list_fields=""
+    list_prog=""
+    list_prev=""
+    for list_arg in "$@"; do
+      if [ "$list_prev" = --json ]; then
+        list_fields=$list_arg
+        list_prev=""
+        continue
+      fi
+      if [ "$list_prev" = --jq ]; then
+        list_prog=$list_arg
+        list_prev=""
+        continue
+      fi
+      case "$list_arg" in
+        --json) list_prev=--json ;;
+        --jq) list_prev=--jq ;;
+        --json=*) list_fields=${list_arg#--json=} ;;
+        --jq=*) list_prog=${list_arg#--jq=} ;;
+      esac
+    done
+    [ -n "$list_prog" ] || exit 2
+    list_payload=$(jq -R -s 'split("\n") | map(select(length > 0)) | map(split(" ")) | map({number: (.[0] | tonumber), url: .[1], headRefName: .[2], baseRefName: .[3], headRepository: {nameWithOwner: (.[4] // "")}})' "$list_rows") || exit 1
+    if [ -n "$list_fields" ]; then
+      list_payload=$(printf '%s' "$list_payload" | jq --arg f "$list_fields" 'map(with_entries(select(.key as $k | ($f | split(",")) | index($k))))') || exit 1
+    fi
+    printf '%s' "$list_payload" | jq -r "$list_prog"
+    exit $?
     ;;
   "pr merge")
     [ -z "${FM_TEST_GH_MERGE_HOOK:-}" ] || "$FM_TEST_GH_MERGE_HOOK"
@@ -205,8 +233,9 @@ printf '%s\n' "$*" >> "$FM_TEST_GLAB_LOG"
 printf 'title:\tfixture merge request\nstate:\t%s\nauthor:\tsomeone\n' "${FM_TEST_GLAB_STATE:-opened}"
 SH
   chmod +x "$fakebin/gh" "$fakebin/gh-axi" "$fakebin/glab"
-  # Open pull requests the guards read answer from these files, already in the
-  # "<number> <url> <head> <base> <head-repo>" shape the script parses.
+  # Open pull requests the guards read answer from these files, one
+  # "<number> <url> <head> <base> <head-repo>" row per line, which the mock
+  # translates into the JSON the script's --jq projection runs over.
   : > "$dir/open-by-head"
   : > "$dir/open-by-base"
   : > "$dir/gh.log"
@@ -2466,32 +2495,31 @@ SH
     || fail "open-request-read: an empty read was reported as a failure"
   [ -z "$out" ] || fail "open-request-read: an empty read reported a match"
 
-  out=$(helper head '41 https://github.com/example/repo/pull/41 fm/task-a main example/repo') \
+  out=$(helper head $'41\thttps://github.com/example/repo/pull/41\tfm/task-a\tmain\texample/repo') \
     || fail "open-request-read: a matching head read failed"
   [ "$out" = '41 https://github.com/example/repo/pull/41' ] \
     || fail "open-request-read: a matching head read was not reported exactly: '$out'"
 
-  out=$(helper head '41 https://github.com/example/repo/pull/41 fm/other main example/repo') \
+  out=$(helper head $'41\thttps://github.com/example/repo/pull/41\tfm/other\tmain\texample/repo') \
     || fail "open-request-read: a superset head read failed"
   [ -z "$out" ] || fail "open-request-read: a head-filtered row naming another branch was accepted"
 
-  out=$(helper head '41 https://github.com/example/repo/pull/41 fm/task-a main other-user/repo') \
+  out=$(helper head $'41\thttps://github.com/example/repo/pull/41\tfm/task-a\tmain\tother-user/repo') \
     || fail "open-request-read: a cross-fork head read failed"
   [ -z "$out" ] || fail "open-request-read: a same-named branch in another fork was accepted"
 
-  out=$(helper base '57 https://github.com/example/repo/pull/57 fm/child fm/task-a example/repo') \
+  out=$(helper base $'57\thttps://github.com/example/repo/pull/57\tfm/child\tfm/task-a\texample/repo') \
     || fail "open-request-read: a matching base read failed"
   [ "$out" = '57 https://github.com/example/repo/pull/57' ] \
     || fail "open-request-read: a matching base read was not reported exactly: '$out'"
 
-  out=$(helper base '57 https://github.com/example/repo/pull/57 fm/child main example/repo') \
+  out=$(helper base $'57\thttps://github.com/example/repo/pull/57\tfm/child\tmain\texample/repo') \
     || fail "open-request-read: a superset base read failed"
   [ -z "$out" ] || fail "open-request-read: a base-filtered row naming another base was accepted"
 
-  helper head '41 https://github.com/example/repo/pull/41 fm/task-a main example/repo
-abc https://github.com/example/repo/pull/abc fm/task-a main example/repo' \
+  helper head $'41\thttps://github.com/example/repo/pull/41\tfm/task-a\tmain\texample/repo\nabc\thttps://github.com/example/repo/pull/abc\tfm/task-a\tmain\texample/repo' \
     && fail "open-request-read: an unreadable row was reported as a successful read"
-  helper head '41 https://github.com/example/repo/pull/41 fm/task-a' \
+  helper head $'41\thttps://github.com/example/repo/pull/41\tfm/task-a' \
     && fail "open-request-read: a truncated row was reported as a successful read"
   helper head '41 https://github.com/example/repo/pull/41 fm/task-a main example/repo' 1 \
     && fail "open-request-read: a failed forge read was reported as a successful one"

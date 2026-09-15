@@ -53,8 +53,9 @@ make_case() {
   : > "$case_dir/github-rules"
   : > "$case_dir/gh.log"
   # The open-pull-request reads behind the stacked-branch and duplicate-head
-  # guards answer from these files, already in the "<number> <url> <head> <base>
-  # <head-repo>" shape the script parses, so a case drives a guard without a
+  # guards answer from these files, one "<number> <url> <head> <base>
+  # <head-repo>" row per line, which the mock translates into the JSON the
+  # script's --jq projection runs over, so a case drives a guard without a
   # bespoke gh mock. The mock ignores which branch was asked for; the test
   # asserts the exact requested line in gh.log instead.
   : > "$case_dir/open-by-head"
@@ -179,18 +180,46 @@ case "${1:-} ${2:-}" in
     esac
     ;;
   "pr list")
+    list_rows=""
     case " $* " in
       *" --head "*)
         [ ! -f "${FM_TEST_GH_LIST_HEAD_FAIL:-}" ] || exit 1
-        cat "${FM_TEST_GH_LIST_BY_HEAD:-/dev/null}"
+        list_rows=${FM_TEST_GH_LIST_BY_HEAD:-/dev/null}
         ;;
       *" --base "*)
         [ ! -f "${FM_TEST_GH_LIST_BASE_FAIL:-}" ] || exit 1
-        cat "${FM_TEST_GH_LIST_BY_BASE:-/dev/null}"
+        list_rows=${FM_TEST_GH_LIST_BY_BASE:-/dev/null}
         ;;
       *) exit 2 ;;
     esac
-    exit 0
+    list_fields=""
+    list_prog=""
+    list_prev=""
+    for list_arg in "$@"; do
+      if [ "$list_prev" = --json ]; then
+        list_fields=$list_arg
+        list_prev=""
+        continue
+      fi
+      if [ "$list_prev" = --jq ]; then
+        list_prog=$list_arg
+        list_prev=""
+        continue
+      fi
+      case "$list_arg" in
+        --json) list_prev=--json ;;
+        --jq) list_prev=--jq ;;
+        --json=*) list_fields=${list_arg#--json=} ;;
+        --jq=*) list_prog=${list_arg#--jq=} ;;
+      esac
+    done
+    [ -n "$list_prog" ] || exit 2
+    list_payload=$(jq -R -s 'split("\n") | map(select(length > 0)) | map(split(" ")) | map({number: (.[0] | tonumber), url: .[1], headRefName: .[2], baseRefName: .[3], headRepository: {nameWithOwner: (.[4] // "")}})' "$list_rows") || exit 1
+    if [ -n "$list_fields" ]; then
+      list_payload=$(printf '%s' "$list_payload" | jq --arg f "$list_fields" 'map(with_entries(select(.key as $k | ($f | split(",")) | index($k))))') || exit 1
+    fi
+    printf '%s' "$list_payload" | jq -r "$list_prog"
+    exit $?
     ;;
   "pr merge")
     if [ -n "${FM_TEST_META_AT_MERGE:-}" ] && [ -f "${FM_STATE_OVERRIDE:-}/task-x1.meta" ]; then

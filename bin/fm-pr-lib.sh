@@ -218,9 +218,10 @@ fm_pr_url_parse() {
 # line per match to stdout, writes nothing when nothing matches, and returns
 # non-zero only when the forge could not be read.
 #
-# A git branch name can contain no space, so no branch name can split the fields
-# this parses, and each field is compared whole rather than matched as a
-# substring of the line.
+# Git refuses space, tab, and control characters in a branch name, and @tsv
+# escaping keeps any such value from splitting a row, so no branch name can
+# split the fields this parses, and each field is compared whole rather than
+# matched as a substring of the line.
 #
 # GitHub's --head filter matches a branch name across forks, and an unrelated
 # fork can carry a branch whose name collides with this repository's, so a
@@ -245,10 +246,10 @@ fm_pr_github_open_requests() {  # <owner/repo> <head|base> <branch> [<head-repo>
   esac
   if ! raw=$(gh pr list --repo "$repo" --state open --limit 100 "$flag" "$branch" \
       --json number,url,headRefName,baseRefName,headRepository \
-      --jq '.[] | [(.number|tostring), .url, .headRefName, .baseRefName, (.headRepository.nameWithOwner // "")] | join(" ")'); then
+      --jq '.[] | [(.number|tostring), .url, .headRefName, .baseRefName, (.headRepository.nameWithOwner // "")] | @tsv'); then
     return 1
   fi
-  while IFS=' ' read -r number url head_ref base_ref entry_repo; do
+  while IFS=$'\t' read -r number url head_ref base_ref entry_repo; do
     [ -n "$number" ] || continue
     # A payload this cannot read is a failed read and never an empty result: a
     # caller must not merge on a guess that there is no duplicate or no child.
