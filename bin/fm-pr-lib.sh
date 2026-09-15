@@ -266,9 +266,7 @@ fm_pr_github_open_requests() {  # <owner/repo> <head|base> <branch> [<head-repo>
       [ "$base_ref" = "$branch" ] || continue
     fi
     printf '%s %s\n' "$number" "$url"
-  done <<EOF
-$raw
-EOF
+  done < <(printf '%s\n' "$raw")
 }
 
 fm_pr_head_valid() {

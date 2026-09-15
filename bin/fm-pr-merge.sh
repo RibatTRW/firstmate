@@ -621,9 +621,7 @@ github_verify_mergeable() {
       *) continue ;;
     esac
     named=$((named + 1))
-  done <<FIELDS
-$fields
-FIELDS
+  done < <(printf '%s\n' "$fields")
   if [ "$named" -ne 8 ] || [ "$total" -ne 8 ] || [ -z "$base" ] || [ -z "$head_branch" ]; then
     echo "error: could not read the GitHub pull request state before merging" >&2
     return 1

@@ -3354,7 +3354,76 @@ test_stacked_child_refuses_a_rewriting_method_and_names_the_child() {
   pass "fm-pr-merge refuses a rewrite that would strand open stacked pull requests, names them and the method to pass, and allows the merge commit"
 }
 
-test_gitlab_head_override_args_refuse_before_recording
+test_metachar_branch_names_are_treated_as_data() {
+  local case_dir rc evil
+  case_dir=$(make_case metachar-branch-names)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" 3737373737373737373737373737373737373737
+  evil="fm/task-\`:>$case_dir/pwned-backtick\`-\$(:>$case_dir/pwned-dollarsubst)"
+  jq --arg branch "$evil" '.headRefName = $branch' "$case_dir/github-view.json" \
+    > "$case_dir/github-view.json.tmp"
+  mv "$case_dir/github-view.json.tmp" "$case_dir/github-view.json"
+  printf '%s\n' \
+    "41 https://github.com/example/repo/pull/41 $evil main example/repo" \
+    "56 https://github.com/example/repo/pull/56 $evil main example/repo" \
+    > "$case_dir/open-by-head"
+  printf '%s\n' \
+    "57 https://github.com/example/repo/pull/57 fm/child $evil example/repo" \
+    > "$case_dir/open-by-base"
+  : > "$case_dir/gh.log"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/56 \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "metachar-branch-names: a sibling open pull request must refuse the merge"
+  assert_grep "these open pull requests all use head branch $evil" "$case_dir/stderr" \
+    "metachar-branch-names: the refusal did not compare the metacharacter branch literally"
+  assert_grep 'https://github.com/example/repo/pull/41' "$case_dir/stderr" \
+    "metachar-branch-names: the refusal did not name the sibling open pull request"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "metachar-branch-names: an ambiguous pull request was merged anyway"
+  assert_absent "$case_dir/pwned-backtick" \
+    "metachar-branch-names: a backtick branch name ran a command"
+  assert_absent "$case_dir/pwned-dollarsubst" \
+    "metachar-branch-names: a \$() branch name ran a command"
+
+  case_dir=$(make_case metachar-stacked-base)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" 3838383838383838383838383838383838383838
+  evil="fm/task-\`:>$case_dir/pwned-backtick\`-\$(:>$case_dir/pwned-dollarsubst)"
+  jq --arg branch "$evil" '.headRefName = $branch' "$case_dir/github-view.json" \
+    > "$case_dir/github-view.json.tmp"
+  mv "$case_dir/github-view.json.tmp" "$case_dir/github-view.json"
+  printf '%s\n' \
+    "56 https://github.com/example/repo/pull/56 $evil main example/repo" \
+    > "$case_dir/open-by-head"
+  printf '%s\n' \
+    "57 https://github.com/example/repo/pull/57 fm/child $evil example/repo" \
+    > "$case_dir/open-by-base"
+  : > "$case_dir/gh.log"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/56 \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "metachar-stacked-base: a stacked child must refuse the default squash"
+  assert_grep "stacked on with head branch $evil" "$case_dir/stderr" \
+    "metachar-stacked-base: the refusal did not compare the metacharacter base literally"
+  assert_grep 'https://github.com/example/repo/pull/57' "$case_dir/stderr" \
+    "metachar-stacked-base: the refusal did not name the stacked pull request"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "metachar-stacked-base: the default squash merged and stranded the stacked pull request"
+  assert_absent "$case_dir/pwned-backtick" \
+    "metachar-stacked-base: a backtick branch name ran a command"
+  assert_absent "$case_dir/pwned-dollarsubst" \
+    "metachar-stacked-base: a \$() branch name ran a command"
+  pass "fm-pr-merge treats backtick and \$() branch names as data in both guards"
+}
 test_secondmate_merge_reports_upward_once
 test_secondmate_merge_reports_on_the_local_route
 test_gitlab_merge_reports_upward
@@ -3399,3 +3468,4 @@ test_duplicate_head_branch_refuses_and_names_every_open_request
 test_sibling_in_another_fork_is_not_a_duplicate
 test_unreadable_open_request_read_refuses_the_merge
 test_stacked_child_refuses_a_rewriting_method_and_names_the_child
+test_metachar_branch_names_are_treated_as_data
