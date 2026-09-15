@@ -147,7 +147,36 @@ case "${1:-} ${2:-}" in
   "pr view")
     case " $* " in
       *statusCheckRollup*)
-        printf '%s\n' "{\"state\":\"OPEN\",\"isDraft\":false,\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"headRefOid\":\"${FM_TEST_GH_HEAD:-0123456789abcdef0123456789abcdef01234567}\",\"headRefName\":\"${FM_TEST_GH_HEAD_BRANCH:-fm/task-a}\",\"headRepository\":{\"nameWithOwner\":\"${FM_TEST_GH_HEAD_REPO:-o/r}\"},\"baseRefName\":\"main\",\"statusCheckRollup\":[{\"__typename\":\"CheckRun\",\"name\":\"ci\",\"status\":\"COMPLETED\",\"conclusion\":\"SUCCESS\"}]}"
+        view_json=""
+        view_prog=""
+        view_prev=""
+        for view_arg in "$@"; do
+          if [ "$view_prev" = json ]; then
+            view_json=$view_arg
+            view_prev=""
+            continue
+          fi
+          if [ "$view_prev" = jq ]; then
+            view_prog=$view_arg
+            view_prev=""
+            continue
+          fi
+          case "$view_arg" in
+            --json) view_prev=json ;;
+            -q|--jq) view_prev=jq ;;
+            --json=*) view_json=${view_arg#--json=} ;;
+            -q=*|--jq=*) view_prog=${view_arg#*=} ;;
+          esac
+        done
+        view_payload=$(printf '%s\n' "{\"state\":\"OPEN\",\"isDraft\":false,\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\",\"headRefOid\":\"${FM_TEST_GH_HEAD:-0123456789abcdef0123456789abcdef01234567}\",\"headRefName\":\"${FM_TEST_GH_HEAD_BRANCH:-fm/task-a}\",\"headRepository\":{\"nameWithOwner\":\"${FM_TEST_GH_HEAD_REPO:-o/r}\"},\"baseRefName\":\"main\",\"statusCheckRollup\":[{\"__typename\":\"CheckRun\",\"name\":\"ci\",\"status\":\"COMPLETED\",\"conclusion\":\"SUCCESS\"}]}")
+        if [ -n "$view_json" ]; then
+          view_payload=$(printf '%s' "$view_payload" | jq --arg f "$view_json" 'with_entries(select(.key as $k | ($f | split(",")) | index($k)))') || exit 1
+        fi
+        if [ -n "$view_prog" ]; then
+          printf '%s' "$view_payload" | jq -r "$view_prog"
+          exit $?
+        fi
+        printf '%s\n' "$view_payload"
         exit 0
         ;;
     esac
@@ -199,10 +228,36 @@ case " $* " in
   # repository, so a case drives the duplicate-head-branch report by naming
   # them; the default keeps every other case on a plain head commit.
   *headRefOid*)
-    printf '%s\t%s\t%s\n' \
-      "${FM_TEST_GH_HEAD:-0123456789abcdef0123456789abcdef01234567}" \
-      "${FM_TEST_GH_HEAD_BRANCH:-fm/task-a}" \
-      "${FM_TEST_GH_HEAD_REPO:-o/r}"
+    view_json=""
+    view_prog=""
+    view_prev=""
+    for view_arg in "$@"; do
+      if [ "$view_prev" = json ]; then
+        view_json=$view_arg
+        view_prev=""
+        continue
+      fi
+      if [ "$view_prev" = jq ]; then
+        view_prog=$view_arg
+        view_prev=""
+        continue
+      fi
+      case "$view_arg" in
+        --json) view_prev=json ;;
+        -q|--jq) view_prev=jq ;;
+        --json=*) view_json=${view_arg#--json=} ;;
+        -q=*|--jq=*) view_prog=${view_arg#*=} ;;
+      esac
+    done
+    view_payload=$(jq -n --arg oid "${FM_TEST_GH_HEAD:-0123456789abcdef0123456789abcdef01234567}" --arg branch "${FM_TEST_GH_HEAD_BRANCH:-fm/task-a}" --arg repo "${FM_TEST_GH_HEAD_REPO:-o/r}" '{headRefOid: $oid, headRefName: $branch, headRepository: {nameWithOwner: $repo}}') || exit 1
+    if [ -n "$view_json" ]; then
+      view_payload=$(printf '%s' "$view_payload" | jq --arg f "$view_json" 'with_entries(select(.key as $k | ($f | split(",")) | index($k)))') || exit 1
+    fi
+    if [ -n "$view_prog" ]; then
+      printf '%s' "$view_payload" | jq -r "$view_prog"
+      exit $?
+    fi
+    printf '%s\n' "$view_payload"
     ;;
   *" state "*)
     [ "${FM_TEST_GH_FAIL:-0}" = 0 ] || exit 1
