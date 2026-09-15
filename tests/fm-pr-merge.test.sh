@@ -52,6 +52,13 @@ make_case() {
     'base=main' > "$case_dir/github-outcome"
   : > "$case_dir/github-rules"
   : > "$case_dir/gh.log"
+  # The open-pull-request reads behind the stacked-branch and duplicate-head
+  # guards answer from these files, already in the "<number> <url> <head> <base>
+  # <head-repo>" shape the script parses, so a case drives a guard without a
+  # bespoke gh mock. The mock ignores which branch was asked for; the test
+  # asserts the exact requested line in gh.log instead.
+  : > "$case_dir/open-by-head"
+  : > "$case_dir/open-by-base"
   # No worktree/project on disk; fm-pr-check.sh tolerates a worktree it cannot
   # stat and simply skips the pr_head lookup via `gh` in that case, so give it
   # one that resolves for cases that want pr_head recorded.
@@ -65,7 +72,7 @@ write_github_live_json() {
   local case_dir=$1 head=$2
   printf '%s\n' "$head" > "$case_dir/github-head"
   cat > "$case_dir/github-view.json" <<JSON
-{"state":"OPEN","isDraft":false,"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","headRefOid":"$head","baseRefName":"main","statusCheckRollup":[{"__typename":"CheckRun","name":"ci","status":"COMPLETED","conclusion":"SUCCESS"}]}
+{"state":"OPEN","isDraft":false,"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","headRefOid":"$head","headRefName":"fm/task-x1","headRepository":{"nameWithOwner":"example/repo"},"baseRefName":"main","statusCheckRollup":[{"__typename":"CheckRun","name":"ci","status":"COMPLETED","conclusion":"SUCCESS"}]}
 JSON
 }
 
@@ -73,7 +80,7 @@ write_github_red_json() {
   local case_dir=$1 head=$2 name=$3
   printf '%s\n' "$head" > "$case_dir/github-head"
   cat > "$case_dir/github-view.json" <<JSON
-{"state":"OPEN","isDraft":false,"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","headRefOid":"$head","baseRefName":"main","statusCheckRollup":[{"__typename":"CheckRun","name":"$name","status":"COMPLETED","conclusion":"FAILURE"}]}
+{"state":"OPEN","isDraft":false,"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","headRefOid":"$head","headRefName":"fm/task-x1","headRepository":{"nameWithOwner":"example/repo"},"baseRefName":"main","statusCheckRollup":[{"__typename":"CheckRun","name":"$name","status":"COMPLETED","conclusion":"FAILURE"}]}
 JSON
 }
 
@@ -108,7 +115,7 @@ write_github_rollup_json() {
   done
   printf '%s\n' "$head" > "$case_dir/github-head"
   cat > "$case_dir/github-view.json" <<JSON
-{"state":"OPEN","isDraft":false,"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","headRefOid":"$head","baseRefName":"main","statusCheckRollup":[$rollup]}
+{"state":"OPEN","isDraft":false,"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","headRefOid":"$head","headRefName":"fm/task-x1","headRepository":{"nameWithOwner":"example/repo"},"baseRefName":"main","statusCheckRollup":[$rollup]}
 JSON
 }
 
@@ -154,6 +161,20 @@ case "${1:-} ${2:-}" in
         exit 0
         ;;
     esac
+    ;;
+  "pr list")
+    case " $* " in
+      *" --head "*)
+        [ ! -f "${FM_TEST_GH_LIST_HEAD_FAIL:-}" ] || exit 1
+        cat "${FM_TEST_GH_LIST_BY_HEAD:-/dev/null}"
+        ;;
+      *" --base "*)
+        [ ! -f "${FM_TEST_GH_LIST_BASE_FAIL:-}" ] || exit 1
+        cat "${FM_TEST_GH_LIST_BY_BASE:-/dev/null}"
+        ;;
+      *) exit 2 ;;
+    esac
+    exit 0
     ;;
   "pr merge")
     if [ -n "${FM_TEST_META_AT_MERGE:-}" ] && [ -f "${FM_STATE_OVERRIDE:-}/task-x1.meta" ]; then
@@ -384,6 +405,10 @@ run_pr_merge() {
   FM_TEST_GH_MERGE_RC_FILE="$case_dir/github-merge-rc" \
   FM_TEST_GH_MERGE_OUTPUT="$(cat "$case_dir/github-merge-output" 2>/dev/null || true)" \
   FM_TEST_GH_GRAPHQL_FAIL="$case_dir/github-graphql-fail" \
+  FM_TEST_GH_LIST_BY_HEAD="$case_dir/open-by-head" \
+  FM_TEST_GH_LIST_BY_BASE="$case_dir/open-by-base" \
+  FM_TEST_GH_LIST_HEAD_FAIL="$case_dir/open-by-head-fail" \
+  FM_TEST_GH_LIST_BASE_FAIL="$case_dir/open-by-base-fail" \
   FM_TEST_GH_RULES_FAIL="$case_dir/github-rules-fail" \
   FM_TEST_GH_RULES_FAIL_BODY="$case_dir/github-rules-fail-body" \
   FM_TEST_META_AT_MERGE="$case_dir/meta-at-merge" \
@@ -3067,6 +3092,223 @@ test_allow_red_refused_on_gitlab() {
   pass "fm-pr-merge refuses --allow-red on GitLab"
 }
 
+# The guards read the repository's open pull requests by head branch (is this
+# pull request's branch ambiguous?) and by base branch (would a rewrite strand an
+# open child?). A caller who already named a merge commit cannot strand one, so
+# that method pays for neither read of the base branch.
+test_open_request_guards_read_the_branches_they_guard() {
+  local case_dir
+  case_dir=$(make_case guards-read-both-branches)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" 3131313131313131313131313131313131313131
+  # The pull request being merged is itself an open pull request on its own head
+  # branch, and that is what the forge's list read returns, so the case that must
+  # not refuse carries its own row as well.
+  printf '%s\n' \
+    '56 https://github.com/example/repo/pull/56 fm/task-x1 main example/repo' \
+    > "$case_dir/open-by-head"
+  : > "$case_dir/gh.log"
+
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/56 \
+    > "$case_dir/stdout" 2> "$case_dir/stderr" \
+    || fail "guards-read-both-branches: a merge with no duplicate and no child failed: $(cat "$case_dir/stderr")"
+  assert_grep 'pr list --repo example/repo --state open --limit 100 --head fm/task-x1' "$case_dir/gh.log" \
+    "guards-read-both-branches: the default squash read no open pull requests for the head branch"
+  assert_grep 'pr list --repo example/repo --state open --limit 100 --base fm/task-x1' "$case_dir/gh.log" \
+    "guards-read-both-branches: the default squash read no open pull requests stacked on the head branch"
+  assert_logged_gh_merge "$case_dir" 56 example/repo --squash
+
+  case_dir=$(make_case guards-skip-stacked-read)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" 3232323232323232323232323232323232323232
+  printf '%s\n' \
+    '56 https://github.com/example/repo/pull/56 fm/task-x1 main example/repo' \
+    > "$case_dir/open-by-head"
+  : > "$case_dir/gh.log"
+
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/56 -- --merge \
+    > "$case_dir/stdout" 2> "$case_dir/stderr" \
+    || fail "guards-skip-stacked-read: an explicit merge commit failed: $(cat "$case_dir/stderr")"
+  assert_grep 'pr list --repo example/repo --state open --limit 100 --head fm/task-x1' "$case_dir/gh.log" \
+    "guards-skip-stacked-read: the duplicate-head guard read no open pull requests for the head branch"
+  assert_no_grep ' --base fm/task-x1' "$case_dir/gh.log" \
+    "guards-skip-stacked-read: a merge commit still read the stacked pull requests"
+  assert_logged_gh_merge "$case_dir" 56 example/repo --merge
+
+  case_dir=$(make_case guards-skip-stacked-read-method-form)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" 3232323232323232323232323232323232323232
+  printf '%s\n' \
+    '56 https://github.com/example/repo/pull/56 fm/task-x1 main example/repo' \
+    > "$case_dir/open-by-head"
+  : > "$case_dir/gh.log"
+
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/56 -- --method merge \
+    > "$case_dir/stdout" 2> "$case_dir/stderr" \
+    || fail "guards-skip-stacked-read-method-form: --method merge failed: $(cat "$case_dir/stderr")"
+  assert_no_grep ' --base fm/task-x1' "$case_dir/gh.log" \
+    "guards-skip-stacked-read-method-form: --method merge still read the stacked pull requests"
+  assert_logged_gh_merge "$case_dir" 56 example/repo --method merge
+  pass "the guards read each branch exactly while the method could rewrite it"
+}
+
+# The second gap: a repeated validation run opened a second pull request for a
+# branch that already had one, and nothing enumerated open pull requests for a
+# branch, so the duplicate sat unnoticed until the captain asked what it was.
+test_duplicate_head_branch_refuses_and_names_every_open_request() {
+  local case_dir rc
+  case_dir=$(make_case duplicate-head-branch)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" 3333333333333333333333333333333333333333
+  printf '%s\n' \
+    '41 https://github.com/example/repo/pull/41 fm/task-x1 main example/repo' \
+    '56 https://github.com/example/repo/pull/56 fm/task-x1 main example/repo' \
+    > "$case_dir/open-by-head"
+  : > "$case_dir/gh.log"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/56 \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "duplicate-head-branch: a sibling open pull request must refuse the merge"
+  assert_grep 'refusing to merge https://github.com/example/repo/pull/56' "$case_dir/stderr" \
+    "duplicate-head-branch: the refusal did not name the pull request it refused"
+  assert_grep 'these open pull requests all use head branch fm/task-x1' "$case_dir/stderr" \
+    "duplicate-head-branch: the refusal did not name the ambiguous head branch"
+  assert_grep 'https://github.com/example/repo/pull/41' "$case_dir/stderr" \
+    "duplicate-head-branch: the refusal did not name the sibling open pull request"
+  assert_grep 'https://github.com/example/repo/pull/56 (the pull request this run was asked to merge)' "$case_dir/stderr" \
+    "duplicate-head-branch: the refusal did not mark the pull request it was asked to merge"
+  assert_grep 'close every duplicate pull request for that head branch' "$case_dir/stderr" \
+    "duplicate-head-branch: the refusal did not say how to clear the ambiguity"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "duplicate-head-branch: an ambiguous pull request was merged anyway"
+  pass "fm-pr-merge refuses a pull request whose head branch another open pull request uses, naming every one"
+}
+
+# GitHub's --head filter matches a branch name across forks, so a same-named
+# branch in another fork reaches this read without being a duplicate at all.
+test_sibling_in_another_fork_is_not_a_duplicate() {
+  local case_dir
+  case_dir=$(make_case sibling-in-another-fork)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" 3434343434343434343434343434343434343434
+  printf '%s\n' \
+    '77 https://github.com/other-user/repo/pull/77 fm/task-x1 main other-user/repo' \
+    > "$case_dir/open-by-head"
+  : > "$case_dir/gh.log"
+
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/56 \
+    > "$case_dir/stdout" 2> "$case_dir/stderr" \
+    || fail "sibling-in-another-fork: a colliding branch name in another fork refused an unambiguous merge: $(cat "$case_dir/stderr")"
+  assert_logged_gh_merge "$case_dir" 56 example/repo --squash
+  pass "the duplicate-head guard ignores a same-named branch in another fork"
+}
+
+test_unreadable_open_request_read_refuses_the_merge() {
+  local case_dir rc
+  case_dir=$(make_case unreadable-duplicate-read)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" 3535353535353535353535353535353535353535
+  : > "$case_dir/open-by-head-fail"
+  : > "$case_dir/gh.log"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/56 -- --merge \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "unreadable-duplicate-read: a failed head-branch read must refuse the merge"
+  assert_grep 'could not read the open pull requests for head branch fm/task-x1' "$case_dir/stderr" \
+    "unreadable-duplicate-read: the refusal did not name the branch it could not read"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "unreadable-duplicate-read: the merge ran on an unread duplicate check"
+
+  case_dir=$(make_case unreadable-stacked-read)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" 3535353535353535353535353535353535353535
+  : > "$case_dir/open-by-base-fail"
+  : > "$case_dir/gh.log"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/56 \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "unreadable-stacked-read: a failed stacked-branch read must refuse the merge"
+  assert_grep 'could not read the open pull requests stacked on head branch fm/task-x1' "$case_dir/stderr" \
+    "unreadable-stacked-read: the refusal did not name the branch it could not read"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "unreadable-stacked-read: the merge ran on an unread stacked-branch check"
+  pass "an unreadable open-pull-request read refuses the merge instead of assuming there is no conflict"
+}
+
+# The first gap, and the one that cost the captain real time: the default squash
+# rewrote the base of three stacked pull requests into an unrelated commit, turned
+# all three into conflicts, and forced two revalidations and a stray duplicate.
+test_stacked_child_refuses_a_rewriting_method_and_names_the_child() {
+  local case_dir rc
+  case_dir=$(make_case stacked-child-rewriting-method)
+  mkdir -p "$case_dir/wt"
+  add_gh_mocks "$case_dir" 3636363636363636363636363636363636363636
+  printf '%s\n' \
+    '57 https://github.com/example/repo/pull/57 fm/child-a fm/task-x1 example/repo' \
+    '58 https://github.com/example/repo/pull/58 fm/child-b fm/task-x1 example/repo' \
+    > "$case_dir/open-by-base"
+  : > "$case_dir/gh.log"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/56 \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "stacked-child: the default squash must refuse while an open pull request is stacked"
+  assert_grep 'a squash merge rewrites the commits that these open pull requests are stacked on with head branch fm/task-x1' "$case_dir/stderr" \
+    "stacked-child: the refusal did not name the squash and the stacked branch"
+  assert_grep 'https://github.com/example/repo/pull/57' "$case_dir/stderr" \
+    "stacked-child: the refusal did not name the first stacked pull request"
+  assert_grep 'https://github.com/example/repo/pull/58' "$case_dir/stderr" \
+    "stacked-child: the refusal did not name the second stacked pull request"
+  assert_grep '--merge' "$case_dir/stderr" \
+    "stacked-child: the refusal did not name the method that preserves the stack"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "stacked-child: the default squash merged and stranded the stacked pull requests"
+
+  # A rebase rewrites the same commits, so it is refused the same way.
+  : > "$case_dir/gh.log"
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/56 -- --rebase \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "stacked-child: an explicit rebase must refuse while an open pull request is stacked"
+  assert_grep 'a rebase merge rewrites the commits that these open pull requests are stacked on with head branch fm/task-x1' "$case_dir/stderr" \
+    "stacked-child: the refusal did not name the rebase it would have performed"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "stacked-child: a rebase merged and stranded the stacked pull requests"
+
+  # The same method named through --method is the same method.
+  : > "$case_dir/gh.log"
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/56 -- --method squash \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "stacked-child: --method squash must refuse while an open pull request is stacked"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "stacked-child: --method squash merged and stranded the stacked pull requests"
+
+  # A merge commit keeps the commits the children are based on, so it proceeds.
+  : > "$case_dir/gh.log"
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/56 -- --merge \
+    > "$case_dir/stdout" 2> "$case_dir/stderr" \
+    || fail "stacked-child: an explicit merge commit refused a stacked merge it cannot strand: $(cat "$case_dir/stderr")"
+  assert_logged_gh_merge "$case_dir" 56 example/repo --merge
+  pass "fm-pr-merge refuses a rewrite that would strand open stacked pull requests, names them and the method to pass, and allows the merge commit"
+}
+
 test_gitlab_head_override_args_refuse_before_recording
 test_secondmate_merge_reports_upward_once
 test_secondmate_merge_reports_on_the_local_route
@@ -3107,3 +3349,8 @@ test_away_record_cannot_change_between_the_authority_read_and_the_merge
 test_a_grant_revoked_before_the_merge_refuses_it
 test_merge_refuses_when_the_away_record_cannot_be_locked
 test_allow_red_refused_on_gitlab
+test_open_request_guards_read_the_branches_they_guard
+test_duplicate_head_branch_refuses_and_names_every_open_request
+test_sibling_in_another_fork_is_not_a_duplicate
+test_unreadable_open_request_read_refuses_the_merge
+test_stacked_child_refuses_a_rewriting_method_and_names_the_child
