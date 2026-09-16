@@ -1650,6 +1650,51 @@ const messages = {
       toolCall,
     ],
   },
+  gerundOutcomeTesting: {
+    ...assistantBase,
+    stopReason: "toolUse",
+    content: [{ type: "text", text: "Testing confirms the fix works." }, toolCall],
+  },
+  gerundOutcomeReviewing: {
+    ...assistantBase,
+    stopReason: "toolUse",
+    content: [{ type: "text", text: "Reviewing the logs found the case-sensitivity bug." }, toolCall],
+  },
+  gerundOutcomeVerifying: {
+    ...assistantBase,
+    stopReason: "toolUse",
+    content: [{ type: "text", text: "Verifying the partition fix: chapter 375 still fails." }, toolCall],
+  },
+  gerundProgressChecking: {
+    ...assistantBase,
+    stopReason: "toolUse",
+    content: [{ type: "text", text: "Checking the file." }, toolCall],
+  },
+  gerundProgressRunning: {
+    ...assistantBase,
+    stopReason: "toolUse",
+    content: [{ type: "text", text: "Running the tests now." }, toolCall],
+  },
+  gerundProgressWaiting: {
+    ...assistantBase,
+    stopReason: "toolUse",
+    content: [{ type: "text", text: "Waiting on CI." }, toolCall],
+  },
+  gerundProgressMerging: {
+    ...assistantBase,
+    stopReason: "toolUse",
+    content: [{ type: "text", text: "Merging both now, captain." }, toolCall],
+  },
+  gerundProgressRecording: {
+    ...assistantBase,
+    stopReason: "toolUse",
+    content: [{ type: "text", text: "Recording the lesson so this does not recur." }, toolCall],
+  },
+  gerundProgressPreparing: {
+    ...assistantBase,
+    stopReason: "toolUse",
+    content: [{ type: "text", text: "Preparing both public texts." }, toolCall],
+  },
   // The genuine reply that ends a response, which Calm never hides.
   finalReply: {
     ...assistantBase,
@@ -1741,6 +1786,15 @@ requireVisible("branchClosingNote", "Reported and recorded.", "Calm on");
 // the result block beside it stays.
 requireHidden("mixedText", "Let me check the file.", "Calm on");
 requireVisible("mixedText", "Found it: the cache key is case-sensitive.", "Calm on");
+requireVisible("gerundOutcomeTesting", "Testing confirms the fix works.", "Calm on");
+requireVisible("gerundOutcomeReviewing", "Reviewing the logs found the case-sensitivity bug.", "Calm on");
+requireVisible("gerundOutcomeVerifying", "Verifying the partition fix: chapter 375 still fails.", "Calm on");
+requireHidden("gerundProgressChecking", "Checking the file.", "Calm on");
+requireHidden("gerundProgressRunning", "Running the tests now.", "Calm on");
+requireHidden("gerundProgressWaiting", "Waiting on CI.", "Calm on");
+requireHidden("gerundProgressMerging", "Merging both now", "Calm on");
+requireHidden("gerundProgressRecording", "Recording the lesson so this does not recur.", "Calm on");
+requireHidden("gerundProgressPreparing", "Preparing both public texts.", "Calm on");
 requireVisible("streaming", "STREAMING_NOTE_TEXT", "Calm on");
 requireVisible("truncatedFinal", "TRUNCATED_FINAL_TEXT", "Calm on");
 requireVisible("finalReply", "FINAL_REPLY_TEXT", "Calm on");

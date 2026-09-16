@@ -61,6 +61,9 @@ const WORKING_NARRATION_SENTENCE = [
   // Routine monitoring state.
   /^(?:no (?:changes?|updates?|new information|action needed)|nothing (?:new|to report|further)|all (?:quiet|clear|good|green)|still (?:waiting|running|monitoring|pending|in progress)|continuing to (?:monitor|wait|watch)|waiting (?:on|for)|standing by|on track)\b/i,
 ];
+const WORKING_NARRATION_TRAILING_VOCATIVE = /[\s,;—–-]*\bcaptain\b\s*[.!?…]*$/i;
+const WORKING_NARRATION_OUTCOME_VERB = "confirms?|confirmed|shows?|showed|shown|finds?|found|reveals?|revealed|indicates?|indicated|proves?|proved|succeeds?|succeeded|works?|worked|fails?|failed";
+const WORKING_NARRATION_OUTCOME_REPORT = new RegExp(`^\\w+ing\\b(?:\\s+(?:the|a|an|both|these|those|this|that|my|our|his|her|their|its|[A-Za-z0-9_-]+)){0,5}\\s+(?:${WORKING_NARRATION_OUTCOME_VERB})\\b`, "i");
 const WORKING_NARRATION_ACK =
   /^(?:ok(?:ay)?|alright|right|good|great|nice|perfect|aye|understood|noted|got it|sure|on it|will do|sounds good|captain)[.!…]?$/i;
 // A second-person or captain-directed sentence is addressed to the reader rather than
@@ -82,8 +85,19 @@ function fragmentIsWorkingNarration(fragment: string): boolean {
   if (WORKING_NARRATION_ACK.test(fragment.replace(/[,;—–-]+$/, "").trim())) return true;
   const withoutAddress = fragment.replace(WORKING_NARRATION_ADDRESS, "").trim();
   if (withoutAddress.length === 0) return true;
-  if (WORKING_NARRATION_CAPTAIN_DIRECTED.test(withoutAddress)) return false;
-  return WORKING_NARRATION_SENTENCE.some((pattern) => pattern.test(withoutAddress));
+  const withoutVocative = withoutAddress.replace(WORKING_NARRATION_TRAILING_VOCATIVE, "").trim();
+  const directedTarget = withoutVocative.length > 0 ? withoutVocative : withoutAddress;
+  if (WORKING_NARRATION_CAPTAIN_DIRECTED.test(directedTarget)) return false;
+  for (const pattern of WORKING_NARRATION_SENTENCE) {
+    if (!pattern.test(withoutAddress)) continue;
+    if (pattern === WORKING_NARRATION_SENTENCE[1]) {
+      const core = directedTarget;
+      if (/:\s*\S/.test(core)) return false;
+      if (WORKING_NARRATION_OUTCOME_REPORT.test(core)) return false;
+    }
+    return true;
+  }
+  return false;
 }
 
 function midTurnTextIsWorkingNarration(text: string): boolean {
