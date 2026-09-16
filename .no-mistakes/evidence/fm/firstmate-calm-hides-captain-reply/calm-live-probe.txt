@@ -1,0 +1,19 @@
+Calm live probe | Pi 0.85.1 | extension: .pi/extensions/fm-calm.ts @ /tmp/calm-probe-fixture
+PASS | incident: captain done-reply + watcher ack (must stay) | rows=5 | expected visible
+     contains "Novelight fix is up for review": true
+PASS | incident: captain done-reply + watcher ack (must stay) | rows=5 | expected visible
+     contains "chapter-375 caveat": true
+PASS | incident: completed-work confirmation + caveat (must stay) | rows=5 | expected visible
+     contains "Recorded the project branch convention": true
+PASS | incident: completed-work confirmation + caveat (must stay) | rows=5 | expected visible
+     contains "workspace connections have not yet been established": true
+PASS | routine narration (must hide) | rows=0 | expected hidden
+PASS | gerund progress 'Checking the file.' (must hide) | rows=0 | expected hidden
+PASS | gerund outcome 'Testing confirms the fix works.' (must stay) | rows=2 | expected visible
+     contains "Testing confirms the fix works.": true
+PASS | gerund outcome long-filler (must stay) | rows=2 | expected visible
+     contains "found the bug": true
+PASS | genuine final reply (must stay) | rows=2 | expected visible
+     contains "All done, captain.": true
+Calm-off baselines (all must be >0 rows): {"incident: captain done-reply + watcher ack (must stay)":5,"incident: completed-work confirmation + caveat (must stay)":5,"routine narration (must hide)":2,"gerund progress 'Checking the file.' (must hide)":2,"gerund outcome 'Testing confirms the fix works.' (must stay)":2,"gerund outcome long-filler (must stay)":2,"genuine final reply (must stay)":2}
+RESULT: all live-probe checks passed
