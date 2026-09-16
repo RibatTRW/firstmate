@@ -1665,6 +1665,16 @@ const messages = {
     stopReason: "toolUse",
     content: [{ type: "text", text: "Verifying the partition fix: chapter 375 still fails." }, toolCall],
   },
+  gerundOutcomeLongReview: {
+    ...assistantBase,
+    stopReason: "toolUse",
+    content: [{ type: "text", text: "Reviewing the recent production logs from yesterday found the bug." }, toolCall],
+  },
+  gerundOutcomeCarefulReview: {
+    ...assistantBase,
+    stopReason: "toolUse",
+    content: [{ type: "text", text: "Reviewing all of the logs very carefully today found the bug." }, toolCall],
+  },
   gerundProgressChecking: {
     ...assistantBase,
     stopReason: "toolUse",
@@ -1789,6 +1799,8 @@ requireVisible("mixedText", "Found it: the cache key is case-sensitive.", "Calm 
 requireVisible("gerundOutcomeTesting", "Testing confirms the fix works.", "Calm on");
 requireVisible("gerundOutcomeReviewing", "Reviewing the logs found the case-sensitivity bug.", "Calm on");
 requireVisible("gerundOutcomeVerifying", "Verifying the partition fix: chapter 375 still fails.", "Calm on");
+requireVisible("gerundOutcomeLongReview", "Reviewing the recent production logs from yesterday found the bug.", "Calm on");
+requireVisible("gerundOutcomeCarefulReview", "Reviewing all of the logs very carefully today found the bug.", "Calm on");
 requireHidden("gerundProgressChecking", "Checking the file.", "Calm on");
 requireHidden("gerundProgressRunning", "Running the tests now.", "Calm on");
 requireHidden("gerundProgressWaiting", "Waiting on CI.", "Calm on");

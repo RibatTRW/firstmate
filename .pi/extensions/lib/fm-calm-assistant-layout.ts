@@ -63,7 +63,7 @@ const WORKING_NARRATION_SENTENCE = [
 ];
 const WORKING_NARRATION_TRAILING_VOCATIVE = /[\s,;—–-]*\bcaptain\b\s*[.!?…]*$/i;
 const WORKING_NARRATION_OUTCOME_VERB = "confirms?|confirmed|shows?|showed|shown|finds?|found|reveals?|revealed|indicates?|indicated|proves?|proved|succeeds?|succeeded|works?|worked|fails?|failed";
-const WORKING_NARRATION_OUTCOME_REPORT = new RegExp(`^\\w+ing\\b(?:\\s+(?:the|a|an|both|these|those|this|that|my|our|his|her|their|its|[A-Za-z0-9_-]+)){0,5}\\s+(?:${WORKING_NARRATION_OUTCOME_VERB})\\b`, "i");
+const WORKING_NARRATION_OUTCOME_REPORT = new RegExp(`^\\w+ing\\b(?:\\s+(?:the|a|an|both|these|those|this|that|my|our|his|her|their|its|[A-Za-z0-9_-]+))*\\s+(?:${WORKING_NARRATION_OUTCOME_VERB})\\b`, "i");
 const WORKING_NARRATION_ACK =
   /^(?:ok(?:ay)?|alright|right|good|great|nice|perfect|aye|understood|noted|got it|sure|on it|will do|sounds good|captain)[.!…]?$/i;
 // A second-person or captain-directed sentence is addressed to the reader rather than
