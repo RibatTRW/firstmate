@@ -19,7 +19,8 @@ Very narrow terminals fall back to a smaller deterministic sprite.
 While Calm is off, Pi's stock working row is left exactly as Pi renders it.
 Calm hides collapsed thinking labels, mid-turn assistant working notes, the shells for the Pi built-in tool names Calm owns, the `fm_watch_arm_pi` and `fm_branch_outcomes` tool shells, and canonically classified Firstmate operational user rows.
 A mid-turn working note is assistant text in a message the model did not end its response with, identified by that message's own `stopReason` of `toolUse`, or of `length` with tool calls present.
-Hiding it removes the narration a model emits alongside its tool calls, while the genuine reply that ends a response stays visible.
+Calm removes such a text block only when the block itself reads as routine working narration: the model announcing its own next step, or reporting a routine monitoring state.
+A tool call in the same message is not proof that its text was disposable, so a substantive completed-work confirmation, its caveats, and a captain-facing report stay visible even when the run keeps working or ends on that message, while the genuine reply that ends a response stays visible as before.
 Text that is still streaming is never hidden, because suppressing it would also stop a genuine reply from streaming, so a working note is briefly visible before its row collapses.
 The narration is hidden only from the live transcript presentation, and remains in the message, model context, session storage, and `/export` artifacts.
 The operational inputs Calm classifies remain ordinary user-role messages, while Pi's transcript layout renders their complete rows at zero height.

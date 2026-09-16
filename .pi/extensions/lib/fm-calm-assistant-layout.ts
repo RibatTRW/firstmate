@@ -3,9 +3,10 @@
 // if it is missing; fm-calm.ts catches that and skips only this adapter with a diagnostic
 // instead of blocking Calm or Pi.
 // This layout removes collapsed thinking and the mid-turn assistant text blocks
-// classified as "assistant-working-note" from a shallow presentation copy. The message
-// itself, model context, session storage, and export rendering are never touched.
-// ./fm-calm-visibility.ts owns which classes Calm hides.
+// classified as "assistant-working-note" from a shallow presentation copy, and it
+// removes such a block only when the block itself reads as routine working narration.
+// The message itself, model context, session storage, and export rendering are never
+// touched. ./fm-calm-visibility.ts owns which classes Calm hides.
 import type { AssistantMessageComponent as PiAssistantMessageComponent } from "@earendil-works/pi-coding-agent";
 import * as PiCodingAgent from "@earendil-works/pi-coding-agent";
 import { calmPresentationHides } from "./fm-calm-visibility.ts";
@@ -35,6 +36,59 @@ function isMidTurnAssistantMessage(message: AssistantMessage): boolean {
     message.stopReason === "length" &&
     message.content.some((block) => block.type === "toolCall")
   );
+}
+
+// Working narration is the model narrating its own next step or reporting a routine
+// monitoring state: the lines the mid-turn hide exists to drop. A tool call in the
+// same assistant message is not proof that its text was disposable - the run can put a
+// completed-work confirmation, its caveats, or the captain-facing report there and then
+// keep working, or end on that message - so a text block is hidden only when every
+// sentence in it reads as working narration. The check deliberately errs toward
+// showing: unrecognized text is preserved, because hiding a reply is worse than
+// briefly showing a line of narration. docs/calm.md owns the user-facing contract.
+const WORKING_NARRATION_ADDRESS =
+  /^(?:(?:ok(?:ay)?|alright|right|good|great|nice|perfect|aye|understood|noted|got it|sure|captain|so|and|but|well)[\s,.:;!—–-]+)+/i;
+const WORKING_NARRATION_GERUNDS =
+  "checking|looking|reading|running|searching|grepping|inspecting|examining|reviewing|analy[sz](?:ing|e)|testing|waiting|monitoring|preparing|refreshing|fetching|querying|scanning|verifying|confirming|comparing|updating|writing|editing|building|installing|draining|cleaning|restoring|sweeping|polling|pulling|merging|spawning|dispatching|filing|recording|drafting|filling|loading|opening|repairing|tracking|gathering|applying";
+const WORKING_NARRATION_SENTENCE = [
+  // Announcing the model's own next step, optionally behind an acknowledgment address.
+  new RegExp(
+    `^(?:let me(?! know\\b)|let's|let us|i'?ll|i will|i'?m going to|i am going to|i'?m about to|now let me|now i'?ll|now i will|now (?:${WORKING_NARRATION_GERUNDS})\\b|next,? (?:let me|i'?ll|i will)|then,? (?:let me|i'?ll|i will)|first,? (?:let me|i'?ll|i will)|finally,? (?:let me|i'?ll|i will)|time to|going to)\\b`,
+    "i",
+  ),
+  // Ongoing progress.
+  new RegExp(`^(?:${WORKING_NARRATION_GERUNDS})\\b`, "i"),
+  // Routine monitoring state.
+  /^(?:no (?:changes?|updates?|new information|action needed)|nothing (?:new|to report|further)|all (?:quiet|clear|good|green)|still (?:waiting|running|monitoring|pending|in progress)|continuing to (?:monitor|wait|watch)|waiting (?:on|for)|standing by|on track)\b/i,
+];
+const WORKING_NARRATION_ACK =
+  /^(?:ok(?:ay)?|alright|right|good|great|nice|perfect|aye|understood|noted|got it|sure|on it|will do|sounds good|captain)[.!…]?$/i;
+// A second-person or captain-directed sentence is addressed to the reader rather than
+// describing the model's own work, so it is never disposable narration even when it
+// looks like one - an offer ("Let me know if you'd like that") and a wait on the
+// captain ("Still waiting on your reply") are both replies the captain must be able
+// to read.
+const WORKING_NARRATION_CAPTAIN_DIRECTED = /\b(?:you|your|yours|you're|captain)\b/i;
+
+function workingNarrationFragments(text: string): string[] {
+  return text
+    .split(/\n+/)
+    .flatMap((line) => line.split(/(?<=[.!?…])\s+/))
+    .map((fragment) => fragment.replace(/^[\s>]+/, "").trim())
+    .filter((fragment) => fragment.length > 0);
+}
+
+function fragmentIsWorkingNarration(fragment: string): boolean {
+  if (WORKING_NARRATION_ACK.test(fragment.replace(/[,;—–-]+$/, "").trim())) return true;
+  const withoutAddress = fragment.replace(WORKING_NARRATION_ADDRESS, "").trim();
+  if (withoutAddress.length === 0) return true;
+  if (WORKING_NARRATION_CAPTAIN_DIRECTED.test(withoutAddress)) return false;
+  return WORKING_NARRATION_SENTENCE.some((pattern) => pattern.test(withoutAddress));
+}
+
+function midTurnTextIsWorkingNarration(text: string): boolean {
+  const fragments = workingNarrationFragments(text);
+  return fragments.length > 0 && fragments.every(fragmentIsWorkingNarration);
 }
 
 // Keep the introduction-version symbol stable so a compatible upgrade cannot
@@ -83,7 +137,11 @@ export function installCalmAssistantLayout(): void {
             content: message.content.filter(
               (block) =>
                 !(hideThinking && block.type === "thinking") &&
-                !(hideWorkingNote && block.type === "text"),
+                !(
+                  hideWorkingNote &&
+                  block.type === "text" &&
+                  midTurnTextIsWorkingNarration(block.text)
+                ),
             ),
           }
         : message;
