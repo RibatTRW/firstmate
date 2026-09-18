@@ -1,0 +1,17 @@
+PASS preserved=true expected=true :: short captain-directed question :: "Captain, which of the two fixes should I take?"
+PASS preserved=true expected=true :: short captain-directed offer :: "Let me know if you'd like me to proceed."
+PASS preserved=true expected=true :: short wait on the captain :: "Still waiting on your reply."
+PASS preserved=true expected=true :: one-word confirmation :: "Saved."
+PASS preserved=true expected=true :: short per-block mixed-message result :: "Found it: the cache key is case-sensitive."
+PASS preserved=true expected=true :: short gerund outcome report (testing) :: "Testing confirms the fix works."
+PASS preserved=true expected=true :: short gerund outcome report (reviewing) :: "Reviewing the logs found the case-sensitivity bug."
+PASS preserved=true expected=true :: longer gerund finding :: "Reviewing the recent production logs from yesterday found th"
+PASS preserved=false expected=false :: routine gerund progress still hides :: "Checking the file."
+PASS preserved=false expected=false :: routine next-step announcement still hides :: "Let me check the sample file."
+PASS preserved=false expected=false :: routine monitoring state still hides :: "No changes. Continuing to monitor."
+PASS preserved=false expected=false :: routine gerund progress still hides :: "Running the tests now."
+PASS preserved=true expected=true :: 239-char unrecognized text errs toward showing :: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+PASS preserved=true expected=true :: 240-char threshold preserves :: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+PASS preserved=true expected=true :: multi-line preserves :: "line one\nline two"
+THRESHOLD=240
+ALL-DRIVE-PASS
