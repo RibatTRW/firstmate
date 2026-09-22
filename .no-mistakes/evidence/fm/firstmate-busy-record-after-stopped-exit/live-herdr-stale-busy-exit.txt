@@ -1,0 +1,16 @@
+LIVE SCENARIO: stale busy record on a dead Herdr endpoint; exit must retire it and send no bytes
+pane revision before: 1
+busy-state before: v1 gen=g1790052626.1387427.30395 seq=1 state=busy source=fm-spawn event=launch-brief ts=1790052626
+crew-state before: state: working · source: pane · harness busy (fm-spawn)
+
+$ FM_HOME=/tmp/fm-live-home bin/fm-control.sh t1 exit
+already-stopped t1 harness=claude backend=herdr endpoint=fm-lab-busyexit-1332705-4222:w1:p1 worktree=/tmp/fm-live-wt
+rc=0
+
+state dir after:
+total 4
+drwxr-xr-x 2 sirmeme sirmeme  60 Sep 22 12:53 .
+drwxr-xr-x 4 sirmeme sirmeme  80 Sep 22 12:42 ..
+-rw-r--r-- 1 sirmeme sirmeme 346 Sep 22 12:42 t1.meta
+pane revision after: 1
+crew-state after: state: unknown · source: pane · harness state unavailable (unknown missing)

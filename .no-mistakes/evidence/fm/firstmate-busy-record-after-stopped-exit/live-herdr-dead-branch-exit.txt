@@ -1,0 +1,1 @@
+already-stopped t1 harness=claude backend=herdr endpoint=fm-lab-busyexit-1332705-4222:w1:p1 worktree=/tmp/fm-live-wt
