@@ -1192,6 +1192,7 @@ test_reaper_stops_a_tracked_watcher() {
     || { kill -TERM "$SEED_PID" 2>/dev/null; fail "reaper left the tracked watcher pid $SEED_PID running"; }
   [ ! -e "$dir/registry" ] || fail "reaper did not consume its registry"
   pass "watch-arm: the test reaper stops a watcher armed for a tracked temporary home"
+}
 
 # A handling-delivery confirmation for an episode the drain already
 # acknowledged must succeed as a no-op when the generation matches: the pid is

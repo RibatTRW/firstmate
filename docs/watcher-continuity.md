@@ -42,6 +42,7 @@ Each adapter:
 - Preserves one child or scheduled retry at a time.
 - Applies bounded exponential retry after an unexpected or failed close.
 
+Pi treats an arm child whose process is already gone as an empty slot even while its close event is still pending, so a repair call or a scheduled retry starts a fresh arm instead of answering unchanged.
 A failed follow-up never cancels continuity restoration.
 
 ### Pi session replacement
@@ -424,6 +425,7 @@ The same suite covers ordinary same-process session replacement for `/new`, `/re
 - Disappearance of the shutting-down refusal after a valid replacement activates.
 - Terminal quit still refusing late rearm.
 - A mid-restore marker advance that delivers the wake with no rejection appendix while recording the attempt and the confirm result in the bounded extension log.
+- A repair over a dead-but-unclosed arm child that starts a fresh arm instead of answering unchanged.
 
 The guard and session-start suites prove that active generation evidence tolerates a fresh-beacon handoff.
 They also prove that a legacy or handoff-phase watcher marker from an absent replacement extension still raises the outage diagnostic.
