@@ -1,0 +1,5 @@
+generation=848698.1790220763.w26WAr marker=pending:downtime:848698.1790220763.w26WAr
+begin-handling exit=0
+after ack marker=acked:handling:848698.1790220763.w26WAr
+acked-confirm exit=0 (want 0)
+mismatch-confirm exit=3 (want 3)
