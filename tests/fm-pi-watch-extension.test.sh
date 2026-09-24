@@ -1660,6 +1660,91 @@ EOF
   pass "Pi refused handling handshake is classified and not swallowed"
 }
 
+test_pi_confirm_failure_retires_arm_with_distinct_watcher_pid() {
+  local repo home plugin log stop retired out status
+  repo="$TMP_ROOT/pi-confirm-distinct-root"
+  home="$TMP_ROOT/pi-confirm-distinct-home"
+  log="$TMP_ROOT/pi-confirm-distinct.log"
+  stop="$TMP_ROOT/pi-confirm-distinct.stop"
+  retired="$TMP_ROOT/pi-confirm-distinct.retired"
+  mkdir -p "$repo/bin" "$home/state" "$home/config"
+  install_pi_watch_extension_fixture "$repo"
+  plugin="$repo/.pi/extensions/fm-primary-pi-watch.ts"
+  cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+if [ "${1:-}" = --handling-delivered ]; then
+  printf 'refused generation=%s watcher=%s\n' "$2" "$4" >> "${FM_ARM_LOG:?}"
+  exit 1
+fi
+printf 'arm=%s predecessor=%s\n' "$$" "${FM_WATCH_PREDECESSOR_ARM_PID:-none}" >> "${FM_ARM_LOG:?}"
+count=$(grep -c '^arm=' "$FM_ARM_LOG")
+if [ "$count" -eq 1 ]; then
+  printf 'watcher: started pid=%s (beacon fresh)\n' "$$"
+  printf 'signal: synthetic actionable close\n'
+  exit 0
+fi
+sleep 0.02 & dead=$!; wait "$dead" 2>/dev/null || true
+if [ "$dead" = "$$" ]; then dead=1; fi
+printf 'watcher: started pid=%s (beacon fresh) recovery-generation=fixture-distinct\n' "$dead"
+trap 'printf "retired\n" > "${FM_RETIRED_FILE:?}"; exit 0' TERM INT
+while [ ! -e "$FM_STOP_FILE" ]; do sleep 0.02; done
+SH
+  chmod +x "$repo/bin/fm-watch-arm.sh"
+  out=$(PLUGIN="$plugin" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" FM_ARM_LOG="$log" FM_STOP_FILE="$stop" FM_RETIRED_FILE="$retired" node --input-type=module 2>&1 <<'EOF'
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+
+let tool = null;
+let prompt = "";
+const pi = {
+  on() {},
+  registerCommand() {},
+  registerTool(candidate) {
+    if (candidate.name === "fm_watch_arm_pi") tool = candidate;
+  },
+  sendUserMessage: async (message) => {
+    prompt += message;
+  },
+};
+writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
+const mod = await import(pathToFileURL(process.env.PLUGIN).href);
+mod.default(pi);
+await tool.execute("tool-call-confirm-distinct", {}, undefined, undefined, {});
+for (let i = 0; i < 250 && !prompt.includes("handling delivery confirmation was rejected"); i += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 20));
+}
+if (!prompt.includes("handling delivery confirmation was rejected")) {
+  throw new Error(`failed handshake was swallowed: ${prompt}`);
+}
+let retired = false;
+for (let i = 0; i < 250 && !retired; i += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  retired = existsSync(process.env.FM_RETIRED_FILE);
+}
+if (!retired) {
+  const rows = existsSync(process.env.FM_ARM_LOG)
+    ? readFileSync(process.env.FM_ARM_LOG, "utf8").trim().split("\n")
+    : [];
+  throw new Error(`broken arm survived a failed confirmation with a distinct watcher pid: ${rows.join(" | ")}`);
+}
+const rows = readFileSync(process.env.FM_ARM_LOG, "utf8").trim().split("\n");
+const armRows = rows.filter((row) => row.startsWith("arm="));
+if (armRows.length !== 2) throw new Error(`expected one successor arm, got ${armRows.length}: ${rows.join(" | ")}`);
+const watcherPid = rows.find((row) => row.startsWith("refused "))?.split("watcher=")[1];
+const armPid = armRows[1].split(" ")[0].slice("arm=".length);
+if (!watcherPid || watcherPid === armPid) {
+  throw new Error(`fixture did not use distinct arm and watcher pids: ${rows.join(" | ")}`);
+}
+writeFileSync(process.env.FM_STOP_FILE, "stop\n");
+process.exit(0);
+EOF
+)
+  status=$?
+  expect_code 0 "$status" "Pi must retire the failed arm when the watcher pid differs from the arm pid: $out"
+  [ -z "$out" ] || fail "Pi confirm-distinct test printed output: $out"
+  pass "Pi confirm failure retires the named arm with distinct watcher pid"
+}
+
 # A marker that advanced mid-restore supersedes the in-flight delivery: the
 # shell reports a generation mismatch (status 3), so the wake must be
 # delivered with no rejection appendix, nothing may be retired, and the
@@ -4515,6 +4600,7 @@ test_pi_heartbeat_restoration_failure_stays_on_main
 test_pi_watcher_failure_never_offered_to_branch
 test_pi_away_record_collapses_eligibility_and_keeps_vetoes_on_main
 test_pi_handling_delivery_failure_is_typed_once
+test_pi_confirm_failure_retires_arm_with_distinct_watcher_pid
 test_pi_superseded_delivery_has_no_rejection_appendix
 test_pi_repair_starts_fresh_arm_over_dead_child
 test_pi_hung_successor_falls_back_to_typed_wake

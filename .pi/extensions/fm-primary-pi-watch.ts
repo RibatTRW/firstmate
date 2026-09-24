@@ -764,9 +764,13 @@ export default function (pi: ExtensionAPI) {
       if (!confirmed.ok) {
         const failedPid = recovery.watcherPid;
         const current = owner.child;
-        // Retire only the arm the failed token names: a successor replaced
-        // during the restore window is newer, possibly healthy, and must live.
-        if (current && String(current.pid ?? "") === failedPid && !pidAlive(failedPid)) {
+        const currentRecovery = current ? armRecovery.get(current) : undefined;
+        if (
+          current &&
+          currentRecovery?.watcherPid === failedPid &&
+          currentRecovery?.generation === recovery.generation &&
+          !pidAlive(failedPid)
+        ) {
           appendExtensionLog(`retire pid=${failedPid} reason=confirm-failure`);
           await retireArm(current);
         }
