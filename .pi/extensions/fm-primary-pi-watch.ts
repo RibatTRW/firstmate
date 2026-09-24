@@ -230,6 +230,21 @@ function pidAlive(pid: string): boolean {
   }
 }
 
+// An arm child whose process is gone but whose close event has not fired yet
+// (stdio pipes still held) must not keep the single-flight slot: neither a
+// repair call nor a scheduled retry would start anything until that close
+// finally fires. Callers that gate on slot occupancy use this instead of
+// owner.child so both paths can always recover.
+
+function liveArmChild(owner: SessionGeneration): ChildProcess | null {
+  const child = owner.child;
+  if (!child) return null;
+  if (child.exitCode !== null || child.signalCode !== null) return null;
+  const pid = child.pid;
+  if (pid === undefined || !pidAlive(String(pid))) return null;
+  return child;
+}
+
 function lockOwnership(): LockOwnership {
   let lockPid = "";
   try {
@@ -931,7 +946,7 @@ export default function (pi: ExtensionAPI) {
         // been idle.
         const deferred = owner.deferredClose;
         owner.deferredClose = null;
-        if (deferred && !owner.child && !owner.retryTimer) {
+        if (deferred && !liveArmChild(owner) && !owner.retryTimer) {
           scheduleRetry(owner, deferred.message, deferred.predecessorArmPid);
         }
       }
@@ -1021,7 +1036,7 @@ export default function (pi: ExtensionAPI) {
   }
 
   function scheduleRetry(owner: SessionGeneration, message: string, predecessorArmPid: string): void {
-    if (!generationIsLive(owner) || owner.child || owner.retryTimer) return;
+    if (!generationIsLive(owner) || liveArmChild(owner) || owner.retryTimer) return;
     const ownership = lockOwnership();
     if (ownership !== "owned") {
       surfaceFailure(owner, `watcher: FAILED - Pi extension cannot restore continuity because this session no longer owns the lock\n${message}`);
@@ -1055,7 +1070,7 @@ export default function (pi: ExtensionAPI) {
       };
     }
     publishGenerationOwner(owner, "active");
-    if (owner.child) {
+    if (liveArmChild(owner)) {
       return {
         ok: true,
         message: `watcher: unchanged - Pi extension already owns an arm child; no manual re-arm needed; ${repairOnlyHint}`,
