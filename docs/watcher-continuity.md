@@ -140,7 +140,7 @@ A complete Pi reason line can be observed while the predecessor is still finishi
 That line is retained for replacement handoff, but the adapter never treats that already-ready predecessor as its own successor.
 
 If the handoff confirmation fails, the adapter retries it once against that same token.
-A failed confirmation is a restoration failure: the adapter classifies the error, retires a successor only when the failed token names that exact pid, and surfaces exactly one typed message.
+A failed confirmation is a restoration failure: the adapter classifies the error, retires a successor only when the failed token names that exact pid and generation, and surfaces exactly one typed message.
 On Pi a generation mismatch means a newer pipeline superseded this delivery mid-restore, so the wake is delivered without a failure appendix and nothing is retired.
 An already-acknowledged episode confirms as a no-op when the confirmation names its generation, because the drain acknowledged it after the successor started but before the confirmation ran.
 The Pi extension appends restore attempts, readiness timeouts, and confirmation targets and results to state/.watch-extension.log, a bounded diagnostic record that never changes supervision behavior.
