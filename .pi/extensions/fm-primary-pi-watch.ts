@@ -149,6 +149,8 @@ const armScript = `${fmRoot}/bin/fm-watch-arm.sh`;
 const marker = `${state}/.pi-watch-extension-loaded`;
 const handoffDir = `${state}/extensions/pi-primary-watch`;
 const actionableHandoff = `${handoffDir}/session-replacement-actionable.json`;
+const extensionLog = `${state}/.watch-extension.log`;
+const extensionLogMaxLines = positiveInteger("FM_WATCH_EXTENSION_LOG_KEEP_LINES", 200);
 const extensionVersion = `sha256:${createHash("sha256").update(readFileSync(extensionFile)).digest("hex")}`;
 const retryBaseMs = positiveInteger("FM_WATCH_REARM_RETRY_BASE_MS", 250);
 const retryMaxMs = positiveInteger("FM_WATCH_REARM_RETRY_MAX_MS", 4000);
@@ -312,6 +314,31 @@ function nodeErrorCode(error: unknown): string {
   return typeof error === "object" && error !== null && "code" in error
     ? String((error as { code?: unknown }).code ?? "")
     : "";
+}
+
+// Bounded diagnostic record for restore attempts, readiness timeouts, and
+// handling-confirmation targets and results. Purely observational: a logging
+// failure never changes supervision behavior. docs/watcher-continuity.md
+// owns what the arm layer already records; this file is the extension side.
+function appendExtensionLog(detail: string): void {
+  try {
+    mkdirSync(state, { recursive: true });
+    const cleaned = detail.replace(/[\r\n\t]+/g, " ").slice(0, 512);
+    const line = `${new Date().toISOString()} pid=${process.pid} ${cleaned}`;
+    let previous = "";
+    try {
+      previous = readFileSync(extensionLog, "utf8");
+    } catch (error) {
+      if (nodeErrorCode(error) !== "ENOENT") return;
+    }
+    const joined = `${previous}${previous === "" || previous.endsWith("\n") ? "" : "\n"}${line}\n`;
+    const kept = joined.split("\n").slice(-(extensionLogMaxLines + 1)).join("\n");
+    const temporary = `${extensionLog}.tmp-${process.pid}`;
+    writeFileSync(temporary, kept, { mode: 0o600 });
+    renameSync(temporary, extensionLog);
+  } catch {
+    // Diagnostic only: never fail supervision for observability.
+  }
 }
 
 function createPendingActionable(message: string, predecessorArmPid: string): PendingActionableClose {
@@ -611,6 +638,7 @@ export default function (pi: ExtensionAPI) {
   function confirmHandlingDelivery(recovery: { generation: string; watcherPid: string }): {
     ok: boolean;
     detail: string;
+    superseded?: boolean;
   } {
     try {
       const result = spawnSync(
@@ -623,6 +651,11 @@ export default function (pi: ExtensionAPI) {
         },
       );
       if (result.status === 0) return { ok: true, detail: "" };
+      if (result.status === 3) {
+        // The marker advanced past this restoration's generation mid-restore,
+        // so a newer pipeline owns the episode now: superseded, not rejected.
+        return { ok: false, detail: "", superseded: true };
+      }
       const stderr = (result.stderr || "").trim();
       return {
         ok: false,
@@ -638,16 +671,15 @@ export default function (pi: ExtensionAPI) {
   }
 
   function confirmHandlingDeliveryWithRetry(
-    owner: SessionGeneration,
     recovery: { generation: string; watcherPid: string },
-  ): { ok: boolean; detail: string } {
-    const snapshot = (): { generation: string; watcherPid: string } => {
-      const current = owner.child ? armRecovery.get(owner.child) : undefined;
-      return current ?? recovery;
-    };
-    const first = confirmHandlingDelivery(snapshot());
-    if (first.ok) return first;
-    return confirmHandlingDelivery(snapshot());
+  ): { ok: boolean; detail: string; superseded?: boolean } {
+    // Confirm the restoration's own recovery token, never a fresh snapshot of
+    // the current arm child: a successor replaced during the restore window
+    // must not turn this delivery into a false rejection, and a retry must
+    // not retire a newer healthy watcher.
+    const first = confirmHandlingDelivery(recovery);
+    if (first.ok || first.superseded) return first;
+    return confirmHandlingDelivery(recovery);
   }
 
   function offerWakeToBranch(message: string): Promise<void> | null {
@@ -705,11 +737,23 @@ export default function (pi: ExtensionAPI) {
   ): Promise<boolean> {
     if (!generationIsLive(owner)) return false;
     if (recovery) {
-      const confirmed = confirmHandlingDeliveryWithRetry(owner, recovery);
+      const confirmed = confirmHandlingDeliveryWithRetry(recovery);
+      appendExtensionLog(
+        `confirm generation=${recovery.generation} watcherPid=${recovery.watcherPid} result=${confirmed.ok ? "confirmed" : confirmed.superseded ? "superseded" : "rejected"}`,
+      );
+      if (confirmed.superseded) {
+        // A newer pipeline owns this episode now: deliver the wake plainly
+        // with no failure appended, and retire nothing.
+        return await sendWake(owner, message, pending);
+      }
       if (!confirmed.ok) {
-        const watcherPid = recovery.watcherPid;
-        if (!pidAlive(watcherPid)) {
-          await retireArm(owner.child);
+        const failedPid = recovery.watcherPid;
+        const current = owner.child;
+        // Retire only the arm the failed token names: a successor replaced
+        // during the restore window is newer, possibly healthy, and must live.
+        if (current && String(current.pid ?? "") === failedPid && !pidAlive(failedPid)) {
+          appendExtensionLog(`retire pid=${failedPid} reason=confirm-failure`);
+          await retireArm(current);
         }
         return await sendWake(owner, `${message}\n\n${confirmed.detail}`, pending);
       }
@@ -949,10 +993,14 @@ export default function (pi: ExtensionAPI) {
       if (!generationIsLive(owner)) return { failure: "" };
       const replacement = startArm(owner, predecessorArmPid);
       const successorChild = owner.child;
+      appendExtensionLog(
+        `restore attempt=${attempt} predecessor=${predecessorArmPid || "none"} start=${replacement.ok ? `ok pid=${successorChild?.pid ?? "none"}` : "failed"}`,
+      );
       if (replacement.ok && successorChild && await waitForReadiness(successorChild)) {
         return { failure: "", recovery: armRecovery.get(successorChild) };
       }
       if (replacement.ok) {
+        appendExtensionLog(`restore attempt=${attempt} readiness=timeout pid=${successorChild?.pid ?? "none"}`);
         failure = "watcher: FAILED - Pi extension could not verify a ready successor watcher";
         if (!(await retireArm(successorChild))) {
           return {
@@ -968,6 +1016,7 @@ export default function (pi: ExtensionAPI) {
       if (attempt === retryLimit) break;
       await waitForRetry(attempt + 1);
     }
+    appendExtensionLog(`restore exhausted attempts=${retryLimit + 1} outcome=hand-to-main`);
     return { failure: `${failure}\nwatcher: FAILED - Pi extension could not restore watcher continuity after ${retryLimit} retries` };
   }
 

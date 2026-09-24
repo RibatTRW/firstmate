@@ -1660,6 +1660,89 @@ EOF
   pass "Pi refused handling handshake is classified and not swallowed"
 }
 
+# A marker that advanced mid-restore supersedes the in-flight delivery: the
+# shell reports a generation mismatch (status 3), so the wake must be
+# delivered with no rejection appendix, nothing may be retired, and the
+# attempt plus the confirm result must land in the bounded extension log.
+test_pi_superseded_delivery_has_no_rejection_appendix() {
+  local repo home plugin log stop out status extension_log
+  repo="$TMP_ROOT/pi-handling-superseded-root"
+  home="$TMP_ROOT/pi-handling-superseded-home"
+  log="$TMP_ROOT/pi-handling-superseded.log"
+  stop="$TMP_ROOT/pi-handling-superseded.stop"
+  extension_log="$home/state/.watch-extension.log"
+  mkdir -p "$repo/bin" "$home/state" "$home/config"
+  install_pi_watch_extension_fixture "$repo"
+  plugin="$repo/.pi/extensions/fm-primary-pi-watch.ts"
+  cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+if [ "${1:-}" = --handling-delivered ]; then
+  printf 'superseded generation=%s watcher=%s\n' "$2" "$4" >> "${FM_ARM_LOG:?}"
+  exit 3
+fi
+printf 'arm=%s predecessor=%s\n' "$$" "${FM_WATCH_PREDECESSOR_ARM_PID:-none}" >> "${FM_ARM_LOG:?}"
+count=$(grep -c '^arm=' "$FM_ARM_LOG")
+if [ "$count" -eq 1 ]; then
+  printf 'watcher: started pid=%s (beacon fresh)\n' "$$"
+  printf 'signal: synthetic actionable close\n'
+  exit 0
+fi
+printf 'watcher: started pid=%s (beacon fresh) recovery-generation=fixture-generation\n' "$$"
+trap 'exit 0' TERM INT
+while [ ! -e "$FM_STOP_FILE" ]; do sleep 0.02; done
+SH
+  chmod +x "$repo/bin/fm-watch-arm.sh"
+  out=$(PLUGIN="$plugin" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" FM_ARM_LOG="$log" FM_STOP_FILE="$stop" node --input-type=module 2>&1 <<'EOF'
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+
+let tool = null;
+let prompt = "";
+const pi = {
+  on() {},
+  registerCommand() {},
+  registerTool(candidate) {
+    if (candidate.name === "fm_watch_arm_pi") tool = candidate;
+  },
+  sendUserMessage: async (message) => {
+    prompt += message;
+  },
+};
+writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
+const mod = await import(pathToFileURL(process.env.PLUGIN).href);
+mod.default(pi);
+await tool.execute("tool-call-handling-superseded", {}, undefined, undefined, {});
+for (let i = 0; i < 250 && !prompt.includes("FIRSTMATE WATCHER WAKE"); i += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 20));
+}
+if (!prompt.includes("FIRSTMATE WATCHER WAKE")) throw new Error(`missing follow-up: ${prompt}`);
+if (prompt.includes("handling delivery confirmation was rejected")) {
+  throw new Error(`a superseded delivery carried a rejection appendix: ${prompt}`);
+}
+if ((prompt.match(/FIRSTMATE WATCHER WAKE/g) || []).length !== 1) {
+  throw new Error(`a superseded delivery was not a single plain message: ${prompt}`);
+}
+const rows = existsSync(process.env.FM_ARM_LOG)
+  ? readFileSync(process.env.FM_ARM_LOG, "utf8").trim().split("\n")
+  : [];
+if (rows.filter((row) => row.startsWith("superseded ")).length < 1) {
+  throw new Error(`handling-delivered was never attempted: ${rows.join(" | ")}`);
+}
+writeFileSync(process.env.FM_STOP_FILE, "stop\n");
+process.exit(0);
+EOF
+)
+  status=$?
+  expect_code 0 "$status" "Pi must deliver a superseded wake with no rejection appendix: $out"
+  [ -z "$out" ] || fail "Pi superseded-delivery test printed output: $out"
+  [ -f "$extension_log" ] || fail "Pi extension recorded no bounded restore/confirm log"
+  grep -qF "restore attempt=" "$extension_log" \
+    || fail "extension log has no restore attempt: $(cat "$extension_log")"
+  grep -qF "result=superseded" "$extension_log" \
+    || fail "extension log has no superseded confirm result: $(cat "$extension_log")"
+  pass "Pi superseded handling delivery carries no rejection appendix and is logged"
+}
+
 test_pi_hung_successor_falls_back_to_typed_wake() {
   local repo home plugin log out status
   repo="$TMP_ROOT/pi-hung-successor-root"
@@ -4332,6 +4415,7 @@ test_pi_heartbeat_restoration_failure_stays_on_main
 test_pi_watcher_failure_never_offered_to_branch
 test_pi_away_record_collapses_eligibility_and_keeps_vetoes_on_main
 test_pi_handling_delivery_failure_is_typed_once
+test_pi_superseded_delivery_has_no_rejection_appendix
 test_pi_hung_successor_falls_back_to_typed_wake
 test_pi_unretired_successor_falls_back_without_retry
 test_pi_late_unretired_close_resumes_supervision
