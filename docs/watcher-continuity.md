@@ -132,14 +132,17 @@ After an actionable Pi, omp, or OpenCode child close, the adapter:
 
 1. Waits for the predecessor process to close.
 2. Starts and verifies one singleton successor.
-3. Confirms the handling handoff against that successor before scheduling the follow-up.
+3. Confirms the handling handoff against the restoration's own recovery token before scheduling the follow-up.
 4. Delivers the original wake.
 
 A complete Pi reason line can be observed while the predecessor is still finishing durable cleanup.
 That line is retained for replacement handoff, but the adapter never treats that already-ready predecessor as its own successor.
 
-If the handoff confirmation fails, the adapter retries it once against the current generation and successor.
-A failed confirmation is a restoration failure: the adapter classifies the error, retires a successor that is no longer alive, and surfaces exactly one typed message.
+If the handoff confirmation fails, the adapter retries it once against that same token.
+A failed confirmation is a restoration failure: the adapter classifies the error, retires a successor only when the failed token names that exact pid, and surfaces exactly one typed message.
+On Pi a generation mismatch means a newer pipeline superseded this delivery mid-restore, so the wake is delivered without a failure appendix and nothing is retired.
+An already-acknowledged episode confirms as a no-op when the confirmation names its generation, because the drain acknowledged it after the successor started but before the confirmation ran.
+The Pi extension appends restore attempts, readiness timeouts, and confirmation targets and results to state/.watch-extension.log, a bounded diagnostic record that never changes supervision behavior.
 A failed confirmation is never swallowed.
 
 ### Readiness timeout and retry
@@ -420,6 +423,7 @@ The same suite covers ordinary same-process session replacement for `/new`, `/re
 - Repeated transitions with exactly one live cycle.
 - Disappearance of the shutting-down refusal after a valid replacement activates.
 - Terminal quit still refusing late rearm.
+- A mid-restore marker advance that delivers the wake with no rejection appendix while recording the attempt and the confirm result in the bounded extension log.
 
 The guard and session-start suites prove that active generation evidence tolerates a fresh-beacon handoff.
 They also prove that a legacy or handoff-phase watcher marker from an absent replacement extension still raises the outage diagnostic.
@@ -439,6 +443,8 @@ They also prove that a legacy or handoff-phase watcher marker from an absent rep
 - A watcher close inside the handling window that must leave the printed acknowledgement valid.
 - A re-arm whose recovery cycle is slowed after confirmation and must still surface rather than read as a watcher that stayed live.
 - The self-healing moved-generation acknowledgement that consumes its handled rows and names its remedy.
+- The already-acknowledged confirmation no-op for a matching generation, with its mismatched-generation, dead-pid, and lock-mismatch rejections preserved.
+- The manual-restart generation-churn contract that a handling successor never mints.
 - The disposable-checkout arm refusal.
 - The home-gone and state-gone watcher exits.
 - The test reaper that stops a watcher armed for a temporary home.
@@ -447,7 +453,6 @@ They also prove that a legacy or handoff-phase watcher marker from an absent rep
 
 - The once-per-generation announcement bound with the real Pi extension against a refused handling handshake.
 - A handling successor that must surface a real crew event instead of going blind.
-
 `tests/fm-watch-triage.test.sh` proves TERM stops a watcher blocked inside a poll's pane capture and still releases its lock and records an acknowledgeable stop.
 It also exercises a single TERM with a live foreign downtime-marker lock holder, retained stale singleton and subsequent arm-style recovery, including decimal `08` and zero `00` cleanup bounds.
 It checks that a newly appended keyed decision is classified without rereading earlier status bytes, so signal handling can return to the watcher's beacon refresh even when the status history is long.
