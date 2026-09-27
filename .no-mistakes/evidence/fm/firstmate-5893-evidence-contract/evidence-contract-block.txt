@@ -1,0 +1,6 @@
+
+A claimed fix names the reproduction artifact or command that demonstrably fails before the change and passes after it, exercised through the same path a user hits.
+Every failure-mode row in a validation table carries at least one non-zero pre-change observation, or is explicitly marked as not exercised by the sample.
+A table whose rows are all zero proves nothing and is described as such, never presented as verification.
+State the sample size and the number of cases that exhibited the defect alongside any such table, so prevalence is visible.
+A sample that cannot exhibit the defect is not evidence.
