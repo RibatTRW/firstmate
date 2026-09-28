@@ -1,0 +1,40 @@
+
+[0m[38;2;215;119;87m ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▛█   [0m[1mClaude Code [0m[38;2;128;130;131mv2.1.283[0m
+[0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m█▀  [0m[38;2;128;130;131mOpus 5.5 · Claude Pro[0m
+[0m[38;2;215;119;87m ▝▝   ▝▝   [0m[38;2;128;130;131m~/.no-mistakes/worktrees/f070a5b5bfb8/01M3JXXBY79YJ56YX5KBHDVWH1[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  [0m[38;2;112;112;112m/[0m[1m[38;2;112;112;112mexit[0m[38;2;112;112;112m                              [0m[1m[38;2;112;112;112mExit[0m[38;2;112;112;112m the CLI[0m
+  [0m[38;2;128;130;131m/quiet                             Enter quiet supervision mode when the captain invokes /quiet or asks for quiet[0m
+                                     [0m[38;2;128;130;131mmode, quiet-while-present, or fewer routine wake turns while they stay in the se…[0m
+  [0m[38;2;128;130;131m/context                           Visualize current context usage as a colored grid[0m
+[0m[38;2;121;129;134m─────────────────────────────────────────────────────────────────────────────── Firstmate operational input 1790546042 ─[0m
+❯ [0m[38;2;112;112;112m/exit[0m
+[0m[38;2;121;129;134m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;2;86;93;96m⏵⏵ bypass permissions on[0m[38;2;128;130;131m (shift+tab to cycle)[0m
