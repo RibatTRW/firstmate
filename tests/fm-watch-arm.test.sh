@@ -1268,6 +1268,20 @@ test_handling_delivered_rejects_a_superseded_generation() {
     announced:downtime:"$first") ;;
     *) fail "announced episode has the wrong shape: $(cat "$state/.watcher-down")" ;;
   esac
+  # Reopening mints a fresh generation only when unrecovered work is queued:
+  # an announced episode with an empty queue must survive untouched, so queue
+  # one wake and re-announce first. Without this the reopen below is a no-op
+  # by design (no idle churn) and the fresh-generation assertion below fails.
+  append_wake "$state" check inbox:fixture 'check: manual-restart churn fixture' \
+    || fail "could not queue the fixture wake for the manual restart"
+  FM_STATE_OVERRIDE="$state" bash -c '. "$1"; fm_recovery_marker_arm_check "$2"' \
+    _ "$ROOT/bin/fm-wake-lib.sh" "$state/.watcher-down" \
+    || fail "could not re-announce the queued fixture episode"
+  first=$(recovery_marker_generation "$state/.watcher-down")
+  case "$(cat "$state/.watcher-down")" in
+    announced:downtime:"$first") ;;
+    *) fail "queued episode has the wrong shape: $(cat "$state/.watcher-down")" ;;
+  esac
   FM_STATE_OVERRIDE="$state" bash -c '. "$1"; fm_recovery_marker_reopen_announced "$2"' \
     _ "$ROOT/bin/fm-wake-lib.sh" "$state/.watcher-down" \
     || fail "a manual arm start could not reopen the announced episode"
