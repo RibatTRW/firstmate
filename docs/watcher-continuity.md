@@ -425,7 +425,7 @@ The same suite covers ordinary same-process session replacement for `/new`, `/re
 - Repeated transitions with exactly one live cycle.
 - Disappearance of the shutting-down refusal after a valid replacement activates.
 - Terminal quit still refusing late rearm.
-- A mid-restore marker advance that delivers the wake with no rejection appendix while recording the attempt and the confirm result in the bounded extension log.
+- A mid-restore marker advance that delivers the wake with no rejection appendix while recording the attempt and the confirm result in the bounded extension log when opted in.
 - A repair over a dead-but-unclosed arm child that starts a fresh arm instead of answering unchanged.
 
 The guard and session-start suites prove that active generation evidence tolerates a fresh-beacon handoff.
