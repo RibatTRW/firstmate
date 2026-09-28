@@ -1749,6 +1749,9 @@ EOF
 # shell reports a generation mismatch (status 3), so the wake must be
 # delivered with no rejection appendix, nothing may be retired, and the
 # attempt plus the confirm result must land in the bounded extension log.
+# The log assertions run opted in (FM_WATCH_EXTENSION_LOG_KEEP_LINES=50
+# below); the default-off contract lives in
+# test_pi_extension_log_stays_off_unless_opted_in.
 test_pi_superseded_delivery_has_no_rejection_appendix() {
   local repo home plugin log stop out status extension_log
   repo="$TMP_ROOT/pi-handling-superseded-root"
@@ -1777,7 +1780,7 @@ trap 'exit 0' TERM INT
 while [ ! -e "$FM_STOP_FILE" ]; do sleep 0.02; done
 SH
   chmod +x "$repo/bin/fm-watch-arm.sh"
-  out=$(PLUGIN="$plugin" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" FM_ARM_LOG="$log" FM_STOP_FILE="$stop" node --input-type=module 2>&1 <<'EOF'
+  out=$(PLUGIN="$plugin" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" FM_ARM_LOG="$log" FM_STOP_FILE="$stop" FM_WATCH_EXTENSION_LOG_KEEP_LINES=50 node --input-type=module 2>&1 <<'EOF'
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
@@ -1826,6 +1829,95 @@ EOF
   grep -qF "result=superseded" "$extension_log" \
     || fail "extension log has no superseded confirm result: $(cat "$extension_log")"
   pass "Pi superseded handling delivery carries no rejection appendix and is logged"
+}
+
+# The extension diagnostic log is opt-in and default-off: the same
+# mid-restore supersession that logs when opted in must create no
+# state/.watch-extension.log file with the knob unset, zero, or
+# non-numeric, while the wake is still delivered with no rejection
+# appendix. Each knob value runs in a fresh home because the extension
+# reads the knob once at module load.
+test_pi_extension_log_stays_off_unless_opted_in() {
+  local repo driver mode home log stop extension_log knob_value out status
+  repo="$TMP_ROOT/pi-extension-log-off-root"
+  driver="$TMP_ROOT/pi-extension-log-off-driver.mjs"
+  mkdir -p "$repo/bin"
+  install_pi_watch_extension_fixture "$repo"
+  cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+if [ "${1:-}" = --handling-delivered ]; then
+  printf 'superseded generation=%s watcher=%s\n' "$2" "$4" >> "${FM_ARM_LOG:?}"
+  exit 3
+fi
+printf 'arm=%s predecessor=%s\n' "$$" "${FM_WATCH_PREDECESSOR_ARM_PID:-none}" >> "${FM_ARM_LOG:?}"
+count=$(grep -c '^arm=' "$FM_ARM_LOG")
+if [ "$count" -eq 1 ]; then
+  printf 'watcher: started pid=%s (beacon fresh)\n' "$$"
+  printf 'signal: synthetic actionable close\n'
+  exit 0
+fi
+printf 'watcher: started pid=%s (beacon fresh) recovery-generation=fixture-generation\n' "$$"
+trap 'exit 0' TERM INT
+while [ ! -e "$FM_STOP_FILE" ]; do sleep 0.02; done
+SH
+  chmod +x "$repo/bin/fm-watch-arm.sh"
+  cat > "$driver" <<'EOF'
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+
+let tool = null;
+let prompt = "";
+const pi = {
+  on() {},
+  registerCommand() {},
+  registerTool(candidate) {
+    if (candidate.name === "fm_watch_arm_pi") tool = candidate;
+  },
+  sendUserMessage: async (message) => {
+    prompt += message;
+  },
+};
+writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
+const mod = await import(pathToFileURL(process.env.PLUGIN).href);
+mod.default(pi);
+await tool.execute("tool-call-handling-superseded", {}, undefined, undefined, {});
+for (let i = 0; i < 250 && !prompt.includes("FIRSTMATE WATCHER WAKE"); i += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 20));
+}
+if (!prompt.includes("FIRSTMATE WATCHER WAKE")) throw new Error(`missing follow-up: ${prompt}`);
+if (prompt.includes("handling delivery confirmation was rejected")) {
+  throw new Error(`a superseded delivery carried a rejection appendix: ${prompt}`);
+}
+if ((prompt.match(/FIRSTMATE WATCHER WAKE/g) || []).length !== 1) {
+  throw new Error(`a superseded delivery was not a single plain message: ${prompt}`);
+}
+const rows = existsSync(process.env.FM_ARM_LOG)
+  ? readFileSync(process.env.FM_ARM_LOG, "utf8").trim().split("\n")
+  : [];
+if (rows.filter((row) => row.startsWith("superseded ")).length < 1) {
+  throw new Error(`handling-delivered was never attempted: ${rows.join(" | ")}`);
+}
+writeFileSync(process.env.FM_STOP_FILE, "stop\n");
+process.exit(0);
+EOF
+  for mode in unset zero bogus; do
+    home="$TMP_ROOT/pi-extension-log-off-home-$mode"
+    log="$TMP_ROOT/pi-extension-log-off-$mode.log"
+    stop="$TMP_ROOT/pi-extension-log-off-$mode.stop"
+    extension_log="$home/state/.watch-extension.log"
+    mkdir -p "$home/state" "$home/config"
+    if [ "$mode" = unset ]; then
+      out=$(PLUGIN="$repo/.pi/extensions/fm-primary-pi-watch.ts" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" FM_ARM_LOG="$log" FM_STOP_FILE="$stop" node "$driver" 2>&1)
+    else
+      if [ "$mode" = zero ]; then knob_value=0; else knob_value="not-a-number"; fi
+      out=$(PLUGIN="$repo/.pi/extensions/fm-primary-pi-watch.ts" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" FM_ARM_LOG="$log" FM_STOP_FILE="$stop" FM_WATCH_EXTENSION_LOG_KEEP_LINES="$knob_value" node "$driver" 2>&1)
+    fi
+    status=$?
+    expect_code 0 "$status" "Pi superseded delivery must still succeed with the log $mode: $out"
+    [ -z "$out" ] || fail "Pi log-off ($mode) run printed output: $out"
+    [ ! -e "$extension_log" ] || fail "Pi extension wrote its diagnostic log with the knob $mode: $(cat "$extension_log")"
+  done
+  pass "Pi extension diagnostic log stays off unless opted in"
 }
 
 # A repair call must not no-op on an arm child whose process is already dead
@@ -4681,6 +4773,7 @@ test_pi_away_record_collapses_eligibility_and_keeps_vetoes_on_main
 test_pi_handling_delivery_failure_is_typed_once
 test_pi_confirm_failure_retires_arm_with_distinct_watcher_pid
 test_pi_superseded_delivery_has_no_rejection_appendix
+test_pi_extension_log_stays_off_unless_opted_in
 test_pi_repair_starts_fresh_arm_over_dead_child
 test_pi_hung_successor_falls_back_to_typed_wake
 test_pi_unretired_successor_falls_back_without_retry

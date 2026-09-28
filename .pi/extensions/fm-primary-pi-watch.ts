@@ -150,7 +150,7 @@ const marker = `${state}/.pi-watch-extension-loaded`;
 const handoffDir = `${state}/extensions/pi-primary-watch`;
 const actionableHandoff = `${handoffDir}/session-replacement-actionable.json`;
 const extensionLog = `${state}/.watch-extension.log`;
-const extensionLogMaxLines = positiveInteger("FM_WATCH_EXTENSION_LOG_KEEP_LINES", 200);
+const extensionLogMaxLines = extensionLogKeepLines();
 const extensionVersion = `sha256:${createHash("sha256").update(readFileSync(extensionFile)).digest("hex")}`;
 const retryBaseMs = positiveInteger("FM_WATCH_REARM_RETRY_BASE_MS", 250);
 const retryMaxMs = positiveInteger("FM_WATCH_REARM_RETRY_MAX_MS", 4000);
@@ -213,6 +213,18 @@ function positiveInteger(name: string, fallback: number): number {
   const value = Number(process.env[name]);
   if (!Number.isFinite(value) || value <= 0) return fallback;
   return Math.floor(value);
+}
+
+// Opt-in bound for the extension diagnostic log: only a positive
+// FM_WATCH_EXTENSION_LOG_KEEP_LINES enables logging, so the default run
+// writes nothing. Unset, empty, non-numeric, zero, and negative values
+// disable the log entirely instead of falling back to a silent default.
+function extensionLogKeepLines(): number {
+  const raw = process.env.FM_WATCH_EXTENSION_LOG_KEEP_LINES;
+  if (raw === undefined || raw.trim() === "") return 0;
+  const value = Math.floor(Number(raw));
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return value;
 }
 
 function parentPid(pid: string): string {
@@ -332,10 +344,14 @@ function nodeErrorCode(error: unknown): string {
 }
 
 // Bounded diagnostic record for restore attempts, readiness timeouts, and
-// handling-confirmation targets and results. Purely observational: a logging
-// failure never changes supervision behavior. docs/watcher-continuity.md
-// owns what the arm layer already records; this file is the extension side.
+// handling-confirmation targets and results. Opt-in through
+// FM_WATCH_EXTENSION_LOG_KEEP_LINES and off by default: a disabled log
+// returns before touching the filesystem, so it never creates its file.
+// Purely observational: a logging failure never changes supervision
+// behavior. docs/watcher-continuity.md owns what the arm layer already
+// records; this file is the extension side.
 function appendExtensionLog(detail: string): void {
+  if (extensionLogMaxLines <= 0) return;
   try {
     mkdirSync(state, { recursive: true });
     const cleaned = detail.replace(/[\r\n\t]+/g, " ").slice(0, 512);
