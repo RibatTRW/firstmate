@@ -1,0 +1,45 @@
+Live validation of opt-in extension log on 2026-09-28T02:56:53Z repo=/home/sirmeme/.no-mistakes/worktrees/f070a5b5bfb8/01M3JYDX9DNQ6E3YPWV7CDERNG head=f8a4b8c
+
+=== case mode=unset knob=[] keep_env=unset ===
+exit=0 out=[]
+arm.log: arm=1025350 predecessor=none|arm=1025366 predecessor=1025350|superseded generation=fixture-generation watcher=1025366|
+extension log ABSENT (no file)
+=== case mode=zero knob=[0] keep_env=set ===
+exit=0 out=[]
+arm.log: arm=1025452 predecessor=none|arm=1025460 predecessor=1025452|superseded generation=fixture-generation watcher=1025460|
+extension log ABSENT (no file)
+=== case mode=empty knob=[] keep_env=empty ===
+exit=0 out=[]
+arm.log: arm=1025562 predecessor=none|arm=1025570 predecessor=1025562|superseded generation=fixture-generation watcher=1025570|
+extension log ABSENT (no file)
+=== case mode=bogus knob=[not-a-number] keep_env=set ===
+exit=0 out=[]
+arm.log: arm=1025625 predecessor=none|arm=1025633 predecessor=1025625|superseded generation=fixture-generation watcher=1025633|
+extension log ABSENT (no file)
+=== case mode=negative knob=[-5] keep_env=set ===
+exit=0 out=[]
+arm.log: arm=1025688 predecessor=none|arm=1025696 predecessor=1025688|superseded generation=fixture-generation watcher=1025696|
+extension log ABSENT (no file)
+=== case mode=optin50 knob=[50] keep_env=set ===
+exit=0 out=[]
+arm.log: arm=1025751 predecessor=none|arm=1025760 predecessor=1025751|superseded generation=fixture-generation watcher=1025760|
+extension log EXISTS lines=2 content:
+2026-09-28T02:56:54.536Z pid=1025744 restore attempt=0 predecessor=1025751 start=ok pid=1025760
+2026-09-28T02:56:54.548Z pid=1025744 confirm generation=fixture-generation watcherPid=1025760 result=superseded
+
+=== case mode=optin1-bounded knob=[1] keep_env=set ===
+exit=0 out=[]
+arm.log: arm=1025819 predecessor=none|arm=1025827 predecessor=1025819|superseded generation=fixture-generation watcher=1025827|
+extension log EXISTS lines=1 content:
+2026-09-28T02:56:54.684Z pid=1025812 confirm generation=fixture-generation watcherPid=1025827 result=superseded
+
+
+=== result index ===
+unset|0|/tmp/fm-live-log.HEAA0p/home/state/.watch-extension.log
+zero|0|/tmp/fm-live-log.EPvg8w/home/state/.watch-extension.log
+empty|0|/tmp/fm-live-log.amVs2M/home/state/.watch-extension.log
+bogus|0|/tmp/fm-live-log.tM6vpm/home/state/.watch-extension.log
+negative|0|/tmp/fm-live-log.Jv23Bf/home/state/.watch-extension.log
+optin50|0|/tmp/fm-live-log.1hRCn3/home/state/.watch-extension.log
+optin1-bounded|0|/tmp/fm-live-log.tDamSB/home/state/.watch-extension.log
+transcript: /home/sirmeme/.no-mistakes/evidence/01M3JYDX9DNQ6E3YPWV7CDERNG/live-extension-log-transcript.txt

@@ -1,0 +1,2 @@
+ok - Pi superseded handling delivery carries no rejection appendix and is logged
+ok - Pi extension diagnostic log stays off unless opted in

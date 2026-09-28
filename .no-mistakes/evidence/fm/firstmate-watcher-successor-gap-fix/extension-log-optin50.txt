@@ -1,0 +1,2 @@
+2026-09-28T02:56:54.536Z pid=1025744 restore attempt=0 predecessor=1025751 start=ok pid=1025760
+2026-09-28T02:56:54.548Z pid=1025744 confirm generation=fixture-generation watcherPid=1025760 result=superseded
