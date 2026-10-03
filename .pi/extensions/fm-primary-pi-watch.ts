@@ -735,12 +735,10 @@ export default function (pi: ExtensionAPI) {
       appendExtensionLog(
         `confirm generation=${recovery.generation} watcherPid=${recovery.watcherPid} result=${confirmed.ok ? "confirmed" : confirmed.superseded ? "superseded" : "rejected"}`,
       );
-      if (confirmed.superseded) {
-        // A newer pipeline owns this episode now: deliver the wake plainly
-        // with no failure appended, and retire nothing.
-        return await sendWake(owner, message, pending);
-      }
-      if (!confirmed.ok) {
+      // A superseded result means a newer pipeline owns this episode now: it
+      // routes like a confirmed delivery below, with no failure appended, and
+      // retires nothing.
+      if (!confirmed.ok && !confirmed.superseded) {
         const failedPid = recovery.watcherPid;
         const current = owner.child;
         const currentRecovery = current ? armRecovery.get(current) : undefined;

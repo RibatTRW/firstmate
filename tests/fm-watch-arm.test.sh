@@ -1475,7 +1475,7 @@ test_reaper_stops_a_tracked_watcher() {
 # alive and holds the lock, so the handling is already retired, not rejected.
 # A mismatched generation, a dead pid, and a lock mismatch stay rejections.
 test_handling_delivered_accepts_already_acked_generation() {
-  local dir home state pid identity generation status
+  local dir home state pid identity generation status dead
   dir=$(make_case handling-delivered-acked)
   home="$dir/home"
   state="$dir/state"
@@ -1507,8 +1507,11 @@ test_handling_delivered_accepts_already_acked_generation() {
   FM_HOME="$home" FM_STATE_OVERRIDE="$state" "$WATCH_ARM" --handling-delivered "superseded.0.deadbeef" \
     --watcher-pid "$pid" 2>/dev/null
   expect_code 3 "$?" "a superseded generation must stay rejected"
+  sleep 0 &
+  dead=$!
+  wait "$dead" 2>/dev/null || true
   FM_HOME="$home" FM_STATE_OVERRIDE="$state" "$WATCH_ARM" --handling-delivered "$generation" \
-    --watcher-pid 1 2>/dev/null
+    --watcher-pid "$dead" 2>/dev/null
   expect_code 1 "$?" "a dead watcher pid must stay rejected"
   printf 'foreign-identity\n' > "$state/.watch.lock/pid-identity"
   FM_HOME="$home" FM_STATE_OVERRIDE="$state" "$WATCH_ARM" --handling-delivered "$generation" \
@@ -1521,8 +1524,11 @@ test_handling_delivered_accepts_already_acked_generation() {
   pass "watch-arm: an already-acknowledged handling confirmation succeeds as a no-op"
 }
 
-# A non-successor arm start mints a fresh generation and invalidates the
-# outstanding confirmation, while the handling-successor path keeps it.
+# A non-successor arm start mints a fresh generation, and a confirmation for
+# the churned generation reports a mismatch (status 3). The closing arm check
+# without a reopen - the marker step a handling successor runs - keeps the
+# churned generation. This characterizes existing marker behavior that the Pi
+# superseded-delivery path relies on.
 test_handling_delivered_rejects_a_superseded_generation() {
   local dir home state pid identity first second status
   dir=$(make_case handling-delivered-superseded)
@@ -1569,13 +1575,13 @@ test_handling_delivered_rejects_a_superseded_generation() {
   expect_code 3 "$?" "a confirmation for the churned generation must report a mismatch"
   FM_STATE_OVERRIDE="$state" bash -c '. "$1"; fm_recovery_marker_arm_check "$2"' \
     _ "$ROOT/bin/fm-wake-lib.sh" "$state/.watcher-down" \
-    || fail "the handling-successor arm check could not run"
+    || fail "the arm check after the reopen could not run"
   status=$(recovery_marker_generation "$state/.watcher-down")
   [ "$status" = "$second" ] \
-    || fail "a handling successor minted a new generation: $(cat "$state/.watcher-down")"
+    || fail "an arm check without a reopen minted another generation: $(cat "$state/.watcher-down")"
   kill -KILL "$pid" 2>/dev/null || true
   wait "$pid" 2>/dev/null || true
-  pass "watch-arm: a superseded handling confirmation reports a mismatch without churning successors"
+  pass "watch-arm: a churned generation's handling confirmation reports a mismatch and an arm check keeps it"
 }
 
 test_attached_arm_reports_the_delivered_wake
