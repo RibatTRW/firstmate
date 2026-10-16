@@ -773,9 +773,9 @@ test_secondmate_opencode_plugin_closes_without_a_parent_turnend() {
   out=$(classify opencode "$id" "$state")
   [ "$out" = "busy fm-spawn" ] || fail "opencode secondmate seed must be busy fm-spawn, got '$out'"
   rm -f "$state/$id.turn-ended"
-  out=$(drive_oc_plugin "$plugin" "$(oc_status ses_main busy)" "$(oc_idle ses_main)") \
+  out=$(drive_oc_plugin "$plugin" "$(oc_started ses_main)" "$(oc_ended ses_main)") \
     || fail "opencode secondmate idle drive failed: $out"
-  [ ! -e "$state/$id.turn-ended" ] || fail "opencode secondmate session.idle touched the parent's turn-ended marker"
+  [ ! -e "$state/$id.turn-ended" ] || fail "opencode secondmate execution end touched the parent's turn-ended marker"
   out=$(classify opencode "$id" "$state")
   [ "$out" = "idle opencode-plugin" ] || fail "opencode secondmate idle must classify idle, got '$out'"
   pass "an opencode secondmate plugin closes the parent busy record without a parent turn-end"
