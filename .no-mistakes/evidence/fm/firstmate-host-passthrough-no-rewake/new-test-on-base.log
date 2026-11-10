@@ -1,0 +1,1 @@
+not ok - a firing from the continued session must take over and translate its own close: expected exit 2, got 0
