@@ -1,0 +1,18 @@
+--- render forge=none
+1:# Definition of done
+5:When it is implemented and committed, start the no-mistakes run yourself in that same turn: do not end your turn, and do not append `done:`, between your commit and the run's start.
+7:Your only `done:` is the CI-ready report below, which names the PR URL.
+38:A draft cannot be merged, so a done report on one leaves the merge unasked.
+39:Then append `done [at=<epoch>]: PR {url} checks green` and stop. You are finished.
+40:That CI-ready `done:` is accepted only when this copy's HEAD - your latest commit - is one the /no-mistakes run pushed, so commit nothing after the run; the check tests that commit, not merely that a branch moved.
+41:If you deliberately keep the PR a draft, append `paused [at=<epoch>]: {why the draft is held}` instead of done.
+--- render forge=gerrit
+1:# Definition of done
+8:When it is implemented and committed, start the no-mistakes run yourself in that same turn: do not end your turn, and do not append `done:`, between your commit and the run's start.
+9:Your only `done:` is the published-for-review report below.
+59:Then append `done [at=<epoch>]: PR {change url} published for review` to the status file and stop. You are finished.
+60:That `done:` is accepted only when the change's current patch set on the server carries this copy's HEAD tree, so commit nothing after publishing; if you must change the work, commit it and publish again before reporting done.
+61:A `done:` whose URL is not the canonical `https://<host>/c/<project>/+/<number>` change URL is refused.
+--- legacy gate
+legacy summary gated rc=1
+ready report gated rc=0
